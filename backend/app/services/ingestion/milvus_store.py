@@ -43,14 +43,15 @@ class MilvusStore:
     def collection_name(self, persona_id: str) -> str:
         return f"{settings.milvus_collection_prefix}{persona_id}"
 
-    def create_collection(self, persona_id: str) -> bool:
+    def create_collection(self, persona_id: str, dim: int = None) -> bool:
         self._lazy_init()
         name = self.collection_name(persona_id)
+        d = dim or settings.embedding_dim
         try:
             if settings.milvus_lite:
                 self.client.create_collection(
                     collection_name=name,
-                    dimension=settings.embedding_dim,
+                    dimension=d,
                     metric_type="COSINE",
                 )
             else:
@@ -58,7 +59,7 @@ class MilvusStore:
                 fields = [
                     FieldSchema(name="id", dtype=DataType.VARCHAR, is_primary=True, max_length=128),
                     FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-                    FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=settings.embedding_dim),
+                    FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=d),
                     FieldSchema(name="source", dtype=DataType.VARCHAR, max_length=256),
                 ]
                 schema = CollectionSchema(fields, description=f"KB for {persona_id}")
