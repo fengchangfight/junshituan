@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Advisor, Message, SessionDetail } from "@/lib/types";
+import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail } from "@/lib/api";
 import { Send, ArrowLeft, Users, ChevronDown } from "lucide-react";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
@@ -58,6 +58,7 @@ function CouncilChat() {
   const [loading, setLoading] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [thinkingIds, setThinkingIds] = useState<Set<string>>(new Set());
+  const [budget, setBudget] = useState<BudgetInfo | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -134,6 +135,9 @@ function CouncilChat() {
     try {
       const stream = askCouncil(sessionId, question);
       for await (const event of stream) {
+        if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
+          setBudget(event.metadata.budget);
+        }
         if (event.done) {
           setThinkingIds((prev) => {
             const next = new Set(prev);
@@ -141,20 +145,22 @@ function CouncilChat() {
             return next;
           });
         }
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.advisorId === event.advisorId && m.isStreaming) {
-              const newContent = m.content + (event.content || "");
-              return {
-                ...m,
-                content: newContent,
-                advisorName: event.advisorName || m.advisorName,
-                isStreaming: !event.done,
-              };
-            }
-            return m;
-          })
-        );
+        if (event.content || event.done) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.advisorId === event.advisorId && m.isStreaming) {
+                const newContent = m.content + (event.content || "");
+                return {
+                  ...m,
+                  content: newContent,
+                  advisorName: event.advisorName || m.advisorName,
+                  isStreaming: !event.done,
+                };
+              }
+              return m;
+            })
+          );
+        }
       }
     } catch {
       setMessages((prev) =>
@@ -287,6 +293,30 @@ function CouncilChat() {
           )}
         </AnimatePresence>
       </div>
+
+      {budget && (
+        <div className="px-3 py-1.5 border-b border-ink-800/30 bg-ink-900/40">
+          <div className="flex items-center gap-2 text-[10px] text-ink-500">
+            <span>额度</span>
+            <div className="flex-1 h-1.5 rounded-full bg-ink-800 overflow-hidden">
+              <motion.div
+                className={`h-full rounded-full ${
+                  budget.over_budget ? "bg-red-500" : budget.budget_percent > 80 ? "bg-amber-500" : "bg-emerald-500"
+                }`}
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(budget.budget_percent, 100)}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+            <span className={budget.over_budget ? "text-red-400" : "text-ink-500"}>
+              ¥{budget.total_cost_cny.toFixed(2)} / ¥{budget.max_budget}
+            </span>
+            <span className="text-ink-600">
+              {budget.total_tokens.toLocaleString()} tokens
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto scrollbar-thin bg-ink-950">
         <div className="px-3 py-4 space-y-1">

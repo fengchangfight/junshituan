@@ -75,7 +75,7 @@ export async function fetchSessionDetail(
 export async function* askCouncil(
   sessionId: string,
   question: string
-): AsyncGenerator<{ advisorId: string; advisorName?: string; content: string; done: boolean }> {
+): AsyncGenerator<{ advisorId: string; advisorName?: string; content: string; done: boolean; metadata?: Record<string, any> }> {
   await ensureAuth();
   const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}/ask`, {
     method: "POST",

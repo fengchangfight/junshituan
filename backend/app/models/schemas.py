@@ -106,6 +106,7 @@ class AskEvent(BaseModel):
     advisor_name: str = ""
     content: str = ""
     done: bool = False
+    metadata: dict = {}
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────

@@ -31,6 +31,18 @@ export interface Message {
   metadata?: Record<string, any>;
 }
 
+export interface BudgetInfo {
+  session_id: string;
+  max_budget: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cny: number;
+  remaining_budget: number;
+  budget_percent: number;
+  over_budget: boolean;
+}
+
 export interface SessionDetail {
   id: string;
   title: string;

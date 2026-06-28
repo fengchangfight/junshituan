@@ -113,6 +113,9 @@ class Session(Base):
     message_count = Column(Integer, default=0)
     token_count_estimate = Column(Integer, default=0)
 
+    # Budget tracking
+    budget_data = Column(JSON, nullable=True)
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
