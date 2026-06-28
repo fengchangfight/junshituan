@@ -1,10 +1,13 @@
-"""Knowledge ingestion pipeline using LlamaIndex + Milvus.
+"""Knowledge ingestion pipeline — hybrid search (dense + BM25).
 
-Embedding backend is auto-selected:
-- LOCAL_EMBEDDING=true  → sentence-transformers (BGE, free, 512 dim)
-- LOCAL_EMBEDDING=false → OpenAI text-embedding-3-small (API, 1536 dim)
+Embedding backend:
+- LOCAL_EMBEDDING=true  → sentence-transformers (BGE, 512 dim)
+- LOCAL_EMBEDDING=false → OpenAI text-embedding-3-small (1536 dim)
+
+BM25 sparse vectors are always generated alongside dense embeddings.
 """
 
+import asyncio
 from typing import Optional
 
 from app.core.config import settings
@@ -13,7 +16,6 @@ from app.services.ingestion.milvus_store import milvus_store
 
 
 class IngestionPipeline:
-    """Ingests documents into an advisor's knowledge base."""
 
     async def ingest_text(
         self,
@@ -23,7 +25,7 @@ class IngestionPipeline:
         chunk_size: int = 800,
         chunk_overlap: int = 100,
     ) -> int:
-        """Ingest raw texts into Milvus vector store."""
+        """Ingest raw texts into Milvus with dense + BM25 sparse vectors."""
         all_chunks = []
         for text, source in zip(texts, sources):
             chunks = self._chunk_text(text, chunk_size, chunk_overlap)
@@ -34,10 +36,18 @@ class IngestionPipeline:
             return 0
 
         chunk_texts = [c["text"] for c in all_chunks]
+
+        # Dense embeddings
         embeddings = await embedding_provider.embed(chunk_texts)
 
-        for i, emb in enumerate(embeddings):
-            all_chunks[i]["embedding"] = emb
+        # BM25 sparse vectors — fit on all chunk texts, then encode
+        milvus_store.fit_bm25(chunk_texts)
+        sparse_vecs = milvus_store.encode_sparse(chunk_texts)
+
+        for i in range(len(all_chunks)):
+            all_chunks[i]["embedding"] = embeddings[i]
+            if i < len(sparse_vecs):
+                all_chunks[i]["sparse_vec"] = sparse_vecs[i]
 
         milvus_store.delete_collection(persona_id)
         dim = await self._get_dim()
@@ -52,22 +62,27 @@ class IngestionPipeline:
         query: str,
         top_k: int = 5,
     ) -> list[dict]:
-        """Retrieve relevant knowledge chunks."""
+        """Hybrid search: dense + BM25. Falls back to pure dense if sparse unavailable."""
         embedding = await embedding_provider.embed_single(query)
         if not embedding:
             return []
-        return milvus_store.search(persona_id, embedding, top_k=top_k)
+
+        # Try sparse BM25 encoding for hybrid search
+        try:
+            sparse_vecs = milvus_store.encode_query_sparse([query])
+            sparse_vec = sparse_vecs[0] if sparse_vecs else None
+        except Exception:
+            sparse_vec = None
+
+        return milvus_store.search(
+            persona_id, embedding, top_k=top_k, query_sparse_vec=sparse_vec,
+        )
 
     async def _get_dim(self) -> int:
         await embedding_provider.ensure_ready()
         return embedding_provider.dim
 
-    def _chunk_text(
-        self,
-        text: str,
-        chunk_size: int = 800,
-        chunk_overlap: int = 100,
-    ) -> list[str]:
+    def _chunk_text(self, text: str, chunk_size: int = 800, chunk_overlap: int = 100) -> list[str]:
         chunks = []
         start = 0
         while start < len(text):

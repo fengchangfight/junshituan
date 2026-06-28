@@ -110,14 +110,18 @@ services:
       milvus:
         condition: service_healthy
     environment:
+      # Database & Milvus
       DATABASE_URL: postgresql+asyncpg://junshituan:junshituan_secret@postgres:5432/junshituan
-      MILVUS_LITE: "false"
       MILVUS_HOST: milvus
       MILVUS_PORT: "19530"
+      # LLM
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.deepseek.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      # Embedding (local BGE, pre-downloaded in Dockerfile)
+      LOCAL_EMBEDDING: "true"
+      LOCAL_EMBEDDING_MODEL: BAAI/bge-small-zh-v1.5
+      # Auth
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       CORS_ORIGINS: '["http://localhost:3000"]'
       PERSONAS_DIR: /app/data/personas

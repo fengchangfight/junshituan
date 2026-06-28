@@ -100,4 +100,13 @@ canonical_works:
 2. 创建 `backend/data/corpus/{new-id}/` 目录（可选）
 3. 放入著作 `.txt` 文件
 4. 运行 `python scripts/ingest.py --persona {new-id}`
-5. 在管理后台点击"消化" → "发布"
+5. （可选）运行 `python scripts/distill_skill.py --persona {new-id}` 生成 Skill
+6. 在管理后台点击"消化" → "发布"
+
+## Skill 进阶（v2）
+
+Persona YAML 定义身份和风格，**Skill YAML** 定义更深层的认知操作系统（心智模型、决策启发式、工作流、自查点）。
+
+详见 [Agent 系统 → Skill 系统](./agent-system.md#skill-系统-v2-新增) 和示例文件 `backend/data/skills/zhuge-liang/skill.yaml`。
+
+Skill 可选——不配置时回退到纯 Persona 模式。

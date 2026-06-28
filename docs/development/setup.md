@@ -4,59 +4,107 @@
 
 - Python 3.10+
 - Node.js 20+
-- Docker Desktop (可选，用于 Milvus + PostgreSQL)
+- Docker Desktop
 
-## 1. 克隆与安装
+## 1. 启动数据库 (Docker)
 
 ```bash
-# 后端
-cd backend
-cp .env.example .env          # 填入 OPENAI_API_KEY
-pip install -r requirements.txt
-
-# 前端
-cd frontend
-npm install
+# 在项目根目录
+docker compose up -d postgres milvus etcd minio
 ```
 
-## 2. 配置环境变量
+首次启动会拉取镜像，之后秒启。确认服务正常：
 
-编辑 `backend/.env`：
+```bash
+docker compose ps
+# postgres, etcd, minio, milvus 都应该显示 Up / healthy
+```
+
+## 2. 安装后端
+
+```bash
+cd backend
+
+# 创建独立虚拟环境
+python -m venv venv
+.\venv\Scripts\Activate.ps1    # Windows PowerShell
+# source venv/bin/activate     # macOS / Linux
+
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+## 3. 配置环境变量
+
+编辑 `backend/.env`，唯一必填是 DeepSeek API Key，其余保持默认：
 
 ```env
-# 必填
+# ── 必填 ────────────────────────────────────────────
 OPENAI_API_KEY=sk-your-deepseek-key
 
-# DeepSeek (默认)
+# ── LLM ─────────────────────────────────────────────
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-v4-pro
 
-# OpenAI 嵌入 (DeepSeek 不支持嵌入)
-EMBEDDING_BASE_URL=https://api.openai.com/v1
-EMBEDDING_API_KEY=sk-your-openai-key
+# ── Database ────────────────────────────────────────
+DATABASE_URL=postgresql+asyncpg://junshituan:junshituan_secret@localhost:5432/junshituan
 
-# 数据库 (SQLite 开发模式，零配置)
-DATABASE_URL=sqlite+aiosqlite:///./data/junshituan.db
+# ── Milvus (Docker) ─────────────────────────────────
+MILVUS_HOST=localhost
+MILVUS_PORT=19530
 
-# Milvus (Lite 嵌入式，零配置)
-MILVUS_LITE=true
+# ── Embedding (本地 BGE，免费，CPU) ──────────────────
+LOCAL_EMBEDDING=true
+LOCAL_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+# 首次启动自动下载 ~400MB 模型
 
-# 其他
+# ── 预算 ────────────────────────────────────────────
+MAX_BUDGET_PER_SESSION_CNY=15.0
+
+# ── 其他 ────────────────────────────────────────────
 JWT_SECRET=dev-secret
 CORS_ORIGINS=["http://localhost:3000"]
 ```
 
-## 3. 启动服务
+### 切换到外部嵌入 API（备用）
+
+若需更换嵌入方案：
+
+```env
+LOCAL_EMBEDDING=false
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIM=1536
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_API_KEY=sk-your-openai-key
+```
+
+代码无需改动，切换后需重新消化知识库。
+
+## 4. 安装前端
+
+```bash
+cd frontend
+npm install
+```
+
+## 5. 启动服务
 
 ```powershell
-# 后端
-Start-Process -FilePath "python" -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" -WorkingDirectory "C:\Users\Administrator\test\junshituan\backend"
+# 后端（使用 venv 的 python）
+Start-Process -FilePath "C:\Users\Administrator\test\junshituan\backend\venv\Scripts\python.exe" -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" -WorkingDirectory "C:\Users\Administrator\test\junshituan\backend"
 
 # 前端
 Start-Process -FilePath "cmd" -ArgumentList "/c", "npm run dev" -WorkingDirectory "C:\Users\Administrator\test\junshituan\frontend"
 ```
 
-## 4. 创建管理员
+或者激活 venv 后直接跑：
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+## 6. 创建管理员
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/admin/create \
@@ -64,10 +112,13 @@ curl -X POST http://localhost:8000/api/auth/admin/create \
   -d '{"username":"admin","password":"admin123"}'
 ```
 
-## 5. 打开前端
+## 7. 打开
 
 - 用户端：http://localhost:3000
 - 管理端：http://localhost:3000/admin/login
+- Milvus GUI (Attu)：http://localhost:8001（如果启动了 attu 容器）
+
+---
 
 ## 目录结构
 
@@ -83,6 +134,7 @@ backend/
 │   ├── core/                   # 核心模块
 │   │   ├── config.py           # 全局配置 (Pydantic Settings)
 │   │   ├── llm_client.py       # LLM 客户端封装
+│   │   ├── embedding.py        # 嵌入服务 (本地BGE / API切换)
 │   │   └── security.py         # JWT 认证中间件
 │   ├── db/
 │   │   └── database.py         # SQLAlchemy 异步引擎
@@ -95,21 +147,24 @@ backend/
 │       │   ├── sub_agent.py    # 子 Agent 池
 │       │   └── agent_registry.py # Agent 生命周期管理
 │       ├── ingestion/          # 知识摄入
-│       │   ├── pipeline.py     # LlamaIndex 摄入管道
-│       │   └── milvus_store.py # Milvus 向量库封装
+│       │   ├── pipeline.py     # 摄入管道 (dense + BM25)
+│       │   └── milvus_store.py # Milvus 向量库
 │       ├── memory/             # 记忆与上下文
-│       │   ├── user_memory.py  # Hermes 风格持久记忆
+│       │   ├── user_memory.py  # 持久记忆
 │       │   ├── session_store.py # 会话持久化
-│       │   └── context_manager.py # 上下文压缩管理
+│       │   └── context_manager.py # 上下文压缩
 │       ├── budget_manager.py   # 预算管理
 │       ├── council_service.py  # 议事厅编排
-│       └── persona_engine.py   # Persona 引擎
+│       ├── persona_engine.py   # Persona 引擎
+│       └── skill_engine.py     # Skill 引擎 (v2)
 ├── data/
 │   ├── personas/               # 军师 YAML 配置
+│   ├── skills/                 # 军师 Skill YAML (v2)
 │   ├── corpus/                 # 著作原文 (按 persona_id 分目录)
 │   └── uploads/                # 上传文件
 └── scripts/
-    └── ingest.py               # CLI 摄入工具
+    ├── ingest.py               # CLI 摄入工具
+    └── distill_skill.py        # Skill 蒸馏工具 (v2)
 
 frontend/
 ├── src/
@@ -134,14 +189,33 @@ frontend/
 
 ## 常见问题
 
-### Q: SQLite 数据库在哪里？
-`backend/data/junshituan.db` — 服务启动时自动创建。
+### Q: pip 安装报依赖冲突？
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-### Q: 如何重置数据库？
-删除 `backend/data/junshituan.db` 即可。
+### Q: Milvus 连不上？
+```bash
+docker compose ps milvus    # 确认是 healthy 状态
+docker compose logs milvus  # 查看日志
+```
 
-### Q: Milvus 启动失败？
-检查 `MILVUS_LITE=true` 是否正确。Windows 下 Milvus Lite 可能不稳定，建议用 Docker 模式。
+### Q: Docker 服务启动后后端还是连不上数据库？
+确认 `.env` 中 `DATABASE_URL` 的 host 是 `localhost`（本地开发），不是 `postgres`（Docker 内部）。
 
-### Q: 前端 API 请求失败？
-确认 `NEXT_PUBLIC_API_URL` 指向后端地址（默认 `http://localhost:8000`）。
+### Q: 嵌入模型首次启动慢？
+`LOCAL_EMBEDDING=true` 时首次启动下载 BGE 模型 (~400MB)。后续秒开。
+
+### Q: 如何清空数据库重来？
+```bash
+# PostgreSQL
+docker compose exec postgres psql -U junshituan -d junshituan -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+# 重启后端自动重建表
+```
+
+### Q: 前端 API 404？
+确认 `NEXT_PUBLIC_API_URL=http://localhost:8000`（`frontend/.env.local` 可覆盖）。

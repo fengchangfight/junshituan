@@ -40,10 +40,16 @@ class AgentRegistry:
             agent = sub_agent_pool.get("analyze")
             return await agent.run(task, parent_context=context)
 
+        # Build skill-enhanced system prompt
+        from app.services.skill_engine import get_skill_engine
+        skill_engine = get_skill_engine()
+        skill_prompt = skill_engine.build_skill_prompt(persona_id)
+        system_prompt = persona.build_system_prompt(skill_prompt=skill_prompt)
+
         agent = AdvisorAgentGraph(
             persona_id=persona.id,
             persona_name=persona.name,
-            system_prompt=persona.build_system_prompt(),
+            system_prompt=system_prompt,
             retrieve_fn=retrieve_knowledge,
             sub_agent_fn=dispatch_sub_agent,
         )

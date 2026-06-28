@@ -8,6 +8,8 @@ build/
 .eggs/
 *.manifest
 *.spec
+venv/
+.venv/
 
 # ── Environment / Secrets ──────────────────────────────────────────────────
 .env
@@ -17,7 +19,6 @@ build/
 
 # ── Databases ──────────────────────────────────────────────────────────────
 backend/data/junshituan.db
-backend/data/milvus_lite.db
 backend/data/chroma_db/
 *.db-journal
 *.db-wal

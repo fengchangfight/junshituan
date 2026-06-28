@@ -38,7 +38,7 @@ class Persona:
         self.unknown: list[str] = kd.get("unknown", [])
         self.attitude_to_unknown: str = kd.get("attitude_to_unknown", "")
 
-    def build_system_prompt(self, rag_context: str = "") -> str:
+    def build_system_prompt(self, rag_context: str = "", skill_prompt: str = "") -> str:
         beliefs_text = "\n".join(f"- {b}" for b in self.core_beliefs)
         known_text = "、".join(self.known)
         unknown_text = "、".join(self.unknown)
@@ -80,6 +80,9 @@ class Persona:
         if rag_context:
             prompt += f"\n\n## 参考资料（你的著作中与问题相关的原文）\n{rag_context}\n\n请参考以上资料的精神来回答，但用自己的话重新表达，不要直接复制。"
 
+        if skill_prompt:
+            prompt += f"\n\n# 认知操作系统（Skill）\n{skill_prompt}"
+
         return prompt
 
     def to_api_dict(self) -> dict:
@@ -118,12 +121,16 @@ class PersonaEngine:
         return [p for pid in ids if (p := self._personas.get(pid))]
 
     def build_prompts(self, ids: list[str], rag_results: dict[str, str] | None = None) -> list[tuple[str, str]]:
+        from app.services.skill_engine import get_skill_engine
+        skill_engine = get_skill_engine()
+
         rag_results = rag_results or {}
         result = []
         for pid in ids:
             if persona := self._personas.get(pid):
                 ctx = rag_results.get(pid, "")
-                result.append((pid, persona.build_system_prompt(ctx)))
+                skill_prompt = skill_engine.build_skill_prompt(pid)
+                result.append((pid, persona.build_system_prompt(ctx, skill_prompt)))
         return result
 
 

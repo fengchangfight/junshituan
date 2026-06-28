@@ -27,15 +27,14 @@ class Settings(BaseSettings):
     # ── Database ────────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./data/junshituan.db"
 
-    # ── Milvus ──────────────────────────────────────────────────────────
+    # ── Milvus (Standalone via Docker) ─────────────────────────────────
     milvus_host: str = "localhost"
     milvus_port: int = 19530
     milvus_collection_prefix: str = "junshituan_kb_"
-    milvus_lite: bool = True
-    milvus_lite_db_path: str = "./data/milvus_lite.db"
 
-    # ── Personas ────────────────────────────────────────────────────────
+    # ── Personas & Skills ───────────────────────────────────────────────
     personas_dir: str = "./data/personas"
+    skills_dir: str = "./data/skills"
     uploads_dir: str = "./data/uploads"
 
     # ── Session ─────────────────────────────────────────────────────────

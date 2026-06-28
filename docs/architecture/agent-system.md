@@ -127,19 +127,74 @@ result = await agent.graph.ainvoke(new_state, config)
 - **知识库重连**：消化完成后调用 `registry.remove(id)` 使旧 Agent 失效
 - **Session 隔离**：同一 Agent 通过不同 `thread_id` 服务于不同会话
 
-## 与 Persona Engine 的配合
+## 与 Persona Engine + Skill Engine 的配合
 
 ```
-PersonaEngine (YAML → Persona 对象)
+System Prompt 由三层组成：
+
+PersonaEngine (Persona YAML → 身份与风格)
   │
-  ├─ persona.build_system_prompt(rag_context)
-  │    生成该军师的 System Prompt，包含：
+  ├─ persona.build_system_prompt(rag_context, skill_prompt)
+  │    生成基础 System Prompt：
   │    - 身份与背景
   │    - 思维框架 (analysis/decision/foresight/methodology)
   │    - 语言风格 (tone/style/length/opening)
   │    - 核心信条
   │    - 知识边界
-  │    - RAG 检索到的参考资料
+  │    - RAG 检索到的参考资料（Milvus 混合搜索）
+  │
+  ▼
+SkillEngine (Skill YAML → 认知操作系统)
+  │
+  ├─ skill.build_skill_prompt()
+  │    增强 System Prompt：
+  │    - 回答工作流 (classify → retrieve → reason → check → respond)
+  │    - 开口前自查询问点 (CHECKPOINT)
+  │    - Fallback 树 (检索空/超时代/追问)
+  │    - 心智模型 (含证据/应用/局限)
+  │    - 决策启发式 (触发条件 + 行动)
+  │    - 表达DNA (句式/词汇/节奏/确定性)
+  │    - 反例黑名单 (绝不要做的事)
+  │    - 诚实边界 (已知局限)
   │
   └─ 注入 Agent 的 system_prompt 字段
 ```
+
+## Skill 系统 (v2 新增)
+
+Skill 是比 Persona 更深的"认知操作系统"。参考 [zhangxuefeng-skill](https://github.com/alchaincyf/zhangxuefeng-skill) 的设计范式。
+
+### Skill vs Persona
+
+| 维度 | Persona v1 | Skill v2 |
+|------|-----------|----------|
+| 思维框架 | 4 句描述性引导 | 3-5 个心智模型（含证据/应用场景/局限性） |
+| 决策方式 | 无 | 决策启发式（触发条件 + 行动 + 案例） |
+| 工作流 | 无 | 5 步 Agentic Protocol |
+| 自查机制 | 无 | CHECKPOINT 开口前自检 |
+| 容错 | 无 | Fallback 树（检索空/超时代/问细节） |
+| 表达风格 | 3 行描述 | 句式/词汇/节奏/幽默/确定性/禁忌词 |
+| 反例约束 | 无 | 反例黑名单（禁止行为 + 纠正方案） |
+| 诚实边界 | 知识边界 | 知识边界 + 内在矛盾 + 来源局限 |
+
+### Skill YAML 目录结构
+
+```
+backend/data/skills/
+└── {persona_id}/
+    └── skill.yaml          # 认知操作系统定义
+```
+
+### Skill 蒸馏
+
+使用 LLM 从原始语料自动生成 Skill：
+
+```bash
+python scripts/distill_skill.py --persona zhuge-liang
+```
+
+蒸馏流程：
+1. 读取 Persona YAML（身份/信条/风格）
+2. 读取 corpus 原文（著作/言论）
+3. LLM 分析 → 提取心智模型、启发式、表达DNA
+4. 输出 YAML → `data/skills/{persona_id}/skill.yaml`
