@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=ZCOOL+KuaiLe&display=swap');
+
+@layer base {
+  body {
+    @apply bg-ink-950 text-ink-100 font-serif antialiased;
+  }
+}
+
+@layer components {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.ancient.700') transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.ancient.700');
+    border-radius: 3px;
+  }
+}
+
+@layer utilities {
+  .text-shadow-glow {
+    text-shadow: 0 0 10px rgba(212, 133, 44, 0.5);
+  }
+  .bg-mesh {
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(212, 133, 44, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(45, 138, 86, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 80%, rgba(212, 133, 44, 0.04) 0%, transparent 50%);
+  }
+}
