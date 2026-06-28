@@ -48,3 +48,7 @@ desktop.ini
 # ── Logs ────────────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# ── Docs (generated) ──────────────────────────────────────────────────────
+# Keep docs/ tracked, but ignore any generated output
+

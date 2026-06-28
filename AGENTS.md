@@ -1,5 +1,8 @@
 # AGENTS.md - 军师团项目配置须知
 
+> 完整文档在 [docs/](./docs/) 目录中。
+> 架构设计：[docs/architecture/overview.md](./docs/architecture/overview.md)
+
 ## Windows PowerShell 服务器启动规则
 
 **严禁使用 `Start-Process -NoNewWindow` 启动长时间运行的服务器进程**（如 uvicorn, next dev），这会导致进程附着在当前 shell 并使工具调用挂起。
