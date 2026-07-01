@@ -19,6 +19,12 @@ class AdvisorOut(BaseModel):
 
 
 class AdvisorAdminOut(AdvisorOut):
+    thinking_framework: dict = {}
+    voice: dict = {}
+    core_beliefs: list = []
+    canonical_works: list = []
+    knowledge_domain: dict = {}
+    skill_config: Optional[dict] = None
     yaml_config: str = ""
     documents: list["KnowledgeDocOut"] = []
 
@@ -61,6 +67,11 @@ class PersonaCreate(BaseModel):
     avatar: str = ""
     short_bio: str = ""
     style: str = ""
+    thinking_framework: Optional[dict] = None
+    voice: Optional[dict] = None
+    core_beliefs: Optional[list] = None
+    canonical_works: Optional[list] = None
+    knowledge_domain: Optional[dict] = None
 
 
 class PersonaUpdate(BaseModel):
@@ -71,6 +82,11 @@ class PersonaUpdate(BaseModel):
     avatar: Optional[str] = None
     short_bio: Optional[str] = None
     style: Optional[str] = None
+    thinking_framework: Optional[dict] = None
+    voice: Optional[dict] = None
+    core_beliefs: Optional[list] = None
+    canonical_works: Optional[list] = None
+    knowledge_domain: Optional[dict] = None
     yaml_config: Optional[str] = None
 
 

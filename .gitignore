@@ -20,6 +20,7 @@ venv/
 # ── Databases ──────────────────────────────────────────────────────────────
 backend/data/junshituan.db
 backend/data/chroma_db/
+backend/data/docstore/
 *.db-journal
 *.db-wal
 

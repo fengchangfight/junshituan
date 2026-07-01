@@ -38,9 +38,18 @@ async def init_db():
     async with _get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Auto-migration: add columns that may be missing on existing tables
-        try:
-            await conn.execute(text(
-                "ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64) DEFAULT ''"
-            ))
-        except Exception:
-            pass  # SQLite doesn't support ADD COLUMN IF NOT EXISTS
+        # SQLite compatible ADD COLUMN statements
+        sqlite_add_columns = [
+            "ALTER TABLE knowledge_documents ADD COLUMN content_hash VARCHAR(64) DEFAULT ''",
+            "ALTER TABLE personas ADD COLUMN thinking_framework JSON DEFAULT '{}'",
+            "ALTER TABLE personas ADD COLUMN voice JSON DEFAULT '{}'",
+            "ALTER TABLE personas ADD COLUMN core_beliefs JSON DEFAULT '[]'",
+            "ALTER TABLE personas ADD COLUMN canonical_works JSON DEFAULT '[]'",
+            "ALTER TABLE personas ADD COLUMN knowledge_domain JSON DEFAULT '{}'",
+            "ALTER TABLE personas ADD COLUMN skill_config JSON",
+        ]
+        for stmt in sqlite_add_columns:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass  # Column already exists or not SQLite

@@ -9,6 +9,8 @@ from app.api.advisors import router as advisors_router
 from app.api.council import router as council_router
 from app.api.auth import router as auth_router
 from app.api.admin.advisors import router as admin_advisors_router
+from app.services.persona_engine import init_persona_engine
+from app.services.skill_engine import init_skill_engine
 
 
 @asynccontextmanager
@@ -18,6 +20,16 @@ async def lifespan(app: FastAPI):
         print("Database initialized successfully")
     except Exception as e:
         print(f"WARNING: Database init failed ({e}). Server will start without DB.")
+    try:
+        await init_persona_engine()
+        print("PersonaEngine initialized successfully")
+    except Exception as e:
+        print(f"WARNING: PersonaEngine init failed ({e}).")
+    try:
+        await init_skill_engine()
+        print("SkillEngine initialized successfully")
+    except Exception as e:
+        print(f"WARNING: SkillEngine init failed ({e}).")
     yield
 
 

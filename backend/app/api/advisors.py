@@ -4,34 +4,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.db_models import PersonaDB
-from app.services.persona_engine import get_persona_engine
 
 router = APIRouter(prefix="/api/advisors", tags=["advisors"])
 
 
+def _to_dict(p: PersonaDB) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "title": p.title,
+        "category": p.category,
+        "era": p.era,
+        "avatar": p.avatar,
+        "short_bio": p.short_bio,
+        "style": p.style,
+    }
+
+
 @router.get("")
 async def list_advisors(db: AsyncSession = Depends(get_db)):
-    engine = get_persona_engine()
-    personas = engine.list_all()
+    result = await db.execute(select(PersonaDB))
+    all_personas = result.scalars().all()
 
-    # Get publish + KB status from DB
-    published_ids = set()
-    db_stmt = select(PersonaDB).where(PersonaDB.is_published == True)
-    result = await db.execute(db_stmt)
-    for row in result.scalars().all():
-        published_ids.add(row.id)
+    published = [p for p in all_personas if p.is_published]
+    result_list = published if published else all_personas
 
-    # Only return published advisors for public listing
-    # If no one is published yet, return all (development convenience)
-    if published_ids:
-        return [p.to_api_dict() for p in personas if p.id in published_ids]
-    return [p.to_api_dict() for p in personas]
+    return [_to_dict(p) for p in result_list]
 
 
 @router.get("/{persona_id}")
 async def get_advisor(persona_id: str, db: AsyncSession = Depends(get_db)):
-    engine = get_persona_engine()
-    persona = engine.get(persona_id)
-    if not persona:
+    result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
+    p = result.scalar_one_or_none()
+    if not p:
         return None
-    return persona.to_api_dict()
+    return _to_dict(p)

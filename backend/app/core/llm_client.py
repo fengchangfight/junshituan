@@ -61,6 +61,23 @@ async def chat_stream(
         yield token
 
 
+async def chat(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.7,
+) -> str:
+    """Non-streaming chat completion. Returns the full response text."""
+    response = await _get_client().chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+    )
+    return response.choices[0].message.content or ""
+
+
 async def get_embedding(text: str) -> tuple[list[float], int]:
     """Get embedding vector. Returns (embedding, tokens_used)."""
     response = await _get_client().embeddings.create(

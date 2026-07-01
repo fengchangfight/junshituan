@@ -32,9 +32,7 @@ class Settings(BaseSettings):
     milvus_port: int = 19530
     milvus_collection_prefix: str = "junshituan_kb_"
 
-    # ── Personas & Skills ───────────────────────────────────────────────
-    personas_dir: str = "./data/personas"
-    skills_dir: str = "./data/skills"
+    # ── Uploads ──────────────────────────────────────────────────────────
     uploads_dir: str = "./data/uploads"
 
     # ── Session ─────────────────────────────────────────────────────────

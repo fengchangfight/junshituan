@@ -1,7 +1,6 @@
 """Admin API: Knowledge base management for advisors."""
 
 import os
-import yaml
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -23,8 +22,7 @@ from app.models.schemas import (
 from app.core.security import require_admin
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.agent.agent_registry import agent_registry
-from app.services.persona_engine import get_persona_engine
-from app.core.config import settings
+from app.services.persona_engine import Persona, get_persona_engine
 
 router = APIRouter(prefix="/api/admin/advisors", tags=["admin-advisors"])
 
@@ -34,142 +32,14 @@ async def list_advisors(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    """List all advisors with full admin details."""
-    engine = get_persona_engine()
-    personas = engine.list_all()
+    """List all advisors with full admin details (from DB only)."""
+    result_rows = await db.execute(select(PersonaDB))
+    db_personas = result_rows.scalars().all()
 
     result = []
-    for p in personas:
-        db_persona = await db.execute(
-            select(PersonaDB).where(PersonaDB.id == p.id)
-        )
-        db_p = db_persona.scalar_one_or_none()
-
-        docs = []
-        if db_p:
-            docs_stmt = select(KnowledgeDocument).where(
-                KnowledgeDocument.persona_id == p.id
-            )
-            docs_result = await db.execute(docs_stmt)
-            docs = [
-                KnowledgeDocOut(
-                    id=d.id,
-                    filename=d.filename,
-                    title=d.title,
-                    content_type=d.content_type,
-                    file_path=d.file_path or "",
-                    chunk_count=d.chunk_count,
-                    status=d.status,
-                    created_at=d.created_at.isoformat() if d.created_at else "",
-                    updated_at=d.updated_at.isoformat() if d.updated_at else "",
-                )
-                for d in docs_result.scalars().all()
-            ]
-
-        result.append(
-            AdvisorAdminOut(
-                id=p.id,
-                name=p.name,
-                title=p.title,
-                category=p.category,
-                era=p.era,
-                avatar=p.avatar,
-                short_bio=p.short_bio,
-                style=p.style,
-                yaml_config=db_p.yaml_config if db_p else "",
-                kb_status=db_p.kb_status if db_p else "empty",
-                kb_doc_count=db_p.kb_doc_count if db_p else 0,
-                is_published=db_p.is_published if db_p else False,
-                documents=docs,
-            )
-        )
-
-    return result
-
-
-@router.post("", status_code=201)
-async def create_advisor(
-    req: PersonaCreate,
-    db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
-):
-    """Create a new advisor persona (writes YAML file + DB record)."""
-    import re
-    if not re.match(r"^[a-zA-Z0-9_-]+$", req.id):
-        raise HTTPException(status_code=400, detail="军师ID只能包含字母、数字、下划线和连字符")
-
-    engine = get_persona_engine()
-    if engine.get(req.id):
-        raise HTTPException(status_code=409, detail=f"军师 '{req.id}' 已存在")
-
-    yaml_path = os.path.join(settings.personas_dir, f"{req.id}.yaml")
-    os.makedirs(settings.personas_dir, exist_ok=True)
-
-    data = {
-        "id": req.id,
-        "name": req.name,
-        "title": req.title,
-        "category": req.category,
-        "era": req.era,
-        "avatar": req.avatar,
-        "short_bio": req.short_bio,
-        "style": req.style,
-        "thinking_framework": {
-            "analysis": "",
-            "decision": "",
-            "foresight": "",
-            "methodology": "",
-        },
-        "voice": {
-            "tone": "",
-            "style": "",
-            "length": "中等",
-            "opening": "",
-        },
-        "core_beliefs": [],
-        "canonical_works": [],
-        "knowledge_domain": {
-            "known": [],
-            "unknown": [],
-            "attitude_to_unknown": "",
-        },
-    }
-
-    with open(yaml_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-
-    engine.reload()
-
-    db_p = PersonaDB(
-        id=req.id, name=req.name, title=req.title, category=req.category,
-        avatar=req.avatar, era=req.era, is_published=False,
-    )
-    db.add(db_p)
-    await db.commit()
-
-    return {"id": req.id, "message": "创建成功"}
-
-
-@router.get("/{persona_id}", response_model=AdvisorAdminOut)
-async def get_advisor(
-    persona_id: str,
-    db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
-):
-    engine = get_persona_engine()
-    p = engine.get(persona_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="军师不存在")
-
-    db_persona = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == persona_id)
-    )
-    db_p = db_persona.scalar_one_or_none()
-
-    docs = []
-    if db_p:
+    for db_p in db_personas:
         docs_stmt = select(KnowledgeDocument).where(
-            KnowledgeDocument.persona_id == persona_id
+            KnowledgeDocument.persona_id == db_p.id
         )
         docs_result = await db.execute(docs_stmt)
         docs = [
@@ -187,19 +57,133 @@ async def get_advisor(
             for d in docs_result.scalars().all()
         ]
 
+        result.append(
+            AdvisorAdminOut(
+                id=db_p.id,
+                name=db_p.name,
+                title=db_p.title,
+                category=db_p.category,
+                era=db_p.era,
+                avatar=db_p.avatar,
+                short_bio=db_p.short_bio or "",
+                style=db_p.style or "",
+                thinking_framework=db_p.thinking_framework or {},
+                voice=db_p.voice or {},
+                core_beliefs=db_p.core_beliefs or [],
+                canonical_works=db_p.canonical_works or [],
+                knowledge_domain=db_p.knowledge_domain or {},
+                skill_config=db_p.skill_config,
+                yaml_config=db_p.yaml_config or "",
+                kb_status=db_p.kb_status or "empty",
+                kb_doc_count=db_p.kb_doc_count or 0,
+                is_published=db_p.is_published or False,
+                documents=docs,
+            )
+        )
+
+    return result
+
+
+@router.post("", status_code=201)
+async def create_advisor(
+    req: PersonaCreate,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Create a new advisor persona (DB only)."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", req.id):
+        raise HTTPException(status_code=400, detail="军师ID只能包含字母、数字、下划线和连字符")
+
+    # Check if already exists in DB
+    existing = await db.execute(select(PersonaDB).where(PersonaDB.id == req.id))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"军师 '{req.id}' 已存在")
+
+    db_p = PersonaDB(
+        id=req.id,
+        name=req.name,
+        title=req.title,
+        category=req.category,
+        era=req.era,
+        avatar=req.avatar,
+        short_bio=req.short_bio,
+        style=req.style,
+        thinking_framework=req.thinking_framework or {
+            "analysis": "", "decision": "", "foresight": "", "methodology": "",
+        },
+        voice=req.voice or {
+            "tone": "", "style": "", "length": "中等", "opening": "",
+        },
+        core_beliefs=req.core_beliefs if req.core_beliefs is not None else [],
+        canonical_works=req.canonical_works if req.canonical_works is not None else [],
+        knowledge_domain=req.knowledge_domain or {
+            "known": [], "unknown": [], "attitude_to_unknown": "",
+        },
+        is_published=False,
+    )
+    db.add(db_p)
+    await db.commit()
+    await db.refresh(db_p)
+
+    engine = get_persona_engine()
+    engine.add_persona(Persona.from_db_row(db_p))
+
+    return {"id": req.id, "message": "创建成功"}
+
+
+@router.get("/{persona_id}", response_model=AdvisorAdminOut)
+async def get_advisor(
+    persona_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Get a single advisor with full admin details (from DB only)."""
+    result = await db.execute(
+        select(PersonaDB).where(PersonaDB.id == persona_id)
+    )
+    db_p = result.scalar_one_or_none()
+    if not db_p:
+        raise HTTPException(status_code=404, detail="军师不存在")
+
+    docs_stmt = select(KnowledgeDocument).where(
+        KnowledgeDocument.persona_id == persona_id
+    )
+    docs_result = await db.execute(docs_stmt)
+    docs = [
+        KnowledgeDocOut(
+            id=d.id,
+            filename=d.filename,
+            title=d.title,
+            content_type=d.content_type,
+            file_path=d.file_path or "",
+            chunk_count=d.chunk_count,
+            status=d.status,
+            created_at=d.created_at.isoformat() if d.created_at else "",
+            updated_at=d.updated_at.isoformat() if d.updated_at else "",
+        )
+        for d in docs_result.scalars().all()
+    ]
+
     return AdvisorAdminOut(
-        id=p.id,
-        name=p.name,
-        title=p.title,
-        category=p.category,
-        era=p.era,
-        avatar=p.avatar,
-        short_bio=p.short_bio,
-        style=p.style,
-        yaml_config=db_p.yaml_config if db_p else "",
-        kb_status=db_p.kb_status if db_p else "empty",
-        kb_doc_count=db_p.kb_doc_count if db_p else 0,
-        is_published=db_p.is_published if db_p else False,
+        id=db_p.id,
+        name=db_p.name,
+        title=db_p.title,
+        category=db_p.category,
+        era=db_p.era,
+        avatar=db_p.avatar,
+        short_bio=db_p.short_bio or "",
+        style=db_p.style or "",
+        thinking_framework=db_p.thinking_framework or {},
+        voice=db_p.voice or {},
+        core_beliefs=db_p.core_beliefs or [],
+        canonical_works=db_p.canonical_works or [],
+        knowledge_domain=db_p.knowledge_domain or {},
+        skill_config=db_p.skill_config,
+        yaml_config=db_p.yaml_config or "",
+        kb_status=db_p.kb_status or "empty",
+        kb_doc_count=db_p.kb_doc_count or 0,
+        is_published=db_p.is_published or False,
         documents=docs,
     )
 
@@ -211,28 +195,14 @@ async def update_advisor(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    """Update advisor metadata and sync to YAML."""
-    engine = get_persona_engine()
-    p = engine.get(persona_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="军师不存在")
-
-    db_persona = await db.execute(
+    """Update advisor metadata (DB only)."""
+    result = await db.execute(
         select(PersonaDB).where(PersonaDB.id == persona_id)
     )
-    db_p = db_persona.scalar_one_or_none()
+    db_p = result.scalar_one_or_none()
 
     if not db_p:
-        db_p = PersonaDB(
-            id=persona_id,
-            name=p.name,
-            title=p.title,
-            category=p.category,
-            era=p.era,
-            avatar=p.avatar,
-            yaml_config="",
-        )
-        db.add(db_p)
+        raise HTTPException(status_code=404, detail="军师不存在")
 
     if data.name is not None:
         db_p.name = data.name
@@ -248,28 +218,111 @@ async def update_advisor(
         db_p.short_bio = data.short_bio
     if data.style is not None:
         db_p.style = data.style
+    if data.thinking_framework is not None:
+        db_p.thinking_framework = data.thinking_framework
+    if data.voice is not None:
+        db_p.voice = data.voice
+    if data.core_beliefs is not None:
+        db_p.core_beliefs = data.core_beliefs
+    if data.canonical_works is not None:
+        db_p.canonical_works = data.canonical_works
+    if data.knowledge_domain is not None:
+        db_p.knowledge_domain = data.knowledge_domain
     if data.yaml_config is not None:
         db_p.yaml_config = data.yaml_config
 
     await db.commit()
+    await db.refresh(db_p)
 
-    # Sync to YAML file
-    yaml_path = os.path.join(settings.personas_dir, f"{persona_id}.yaml")
-    if os.path.exists(yaml_path):
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            ydata = yaml.safe_load(f) or {}
-        ydata["name"] = db_p.name
-        ydata["title"] = db_p.title
-        ydata["category"] = db_p.category
-        ydata["era"] = db_p.era or ""
-        ydata["avatar"] = db_p.avatar or ""
-        ydata["short_bio"] = db_p.short_bio or ""
-        ydata["style"] = db_p.style or ""
-        with open(yaml_path, "w", encoding="utf-8") as f:
-            yaml.dump(ydata, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        engine.reload()
+    engine = get_persona_engine()
+    engine.add_persona(Persona.from_db_row(db_p))
 
     return {"status": "ok"}
+
+
+@router.post("/{persona_id}/avatar")
+async def upload_avatar(
+    persona_id: str,
+    admin=Depends(require_admin),
+):
+    """Upload an avatar image: accept base64, resize to 128x128, store in DB.
+
+    Request body: { "image": "data:image/png;base64,..." }
+    """
+    from fastapi import Request
+    from io import BytesIO
+    from PIL import Image
+    import base64
+    import re
+
+    try:
+        body = await admin.request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的请求体")
+
+    raw = (body or {}).get("image", "")
+    if not raw:
+        raise HTTPException(status_code=400, detail="缺少 image 字段")
+
+    # Extract base64 data (may or may not have data URI prefix)
+    match = re.match(r"data:image/\w+;base64,(.+)", raw)
+    if match:
+        b64 = match.group(1)
+    else:
+        b64 = raw
+
+    try:
+        img_bytes = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的 base64 图片数据")
+
+    try:
+        img = Image.open(BytesIO(img_bytes))
+        img.verify()
+        img = Image.open(BytesIO(img_bytes))  # re-open after verify
+    except Exception:
+        raise HTTPException(status_code=400, detail="无法识别的图片格式")
+
+    # Resize to max 128x128, keep aspect ratio
+    MAX_SIZE = (128, 128)
+    img.thumbnail(MAX_SIZE, Image.LANCZOS)
+
+    # Convert RGBA to RGB if needed
+    if img.mode in ("RGBA", "P"):
+        background = Image.new("RGB", img.size, (24, 24, 27))
+        if img.mode == "P":
+            img = img.convert("RGBA")
+        background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+        img = background
+
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=75)
+    compressed = buf.getvalue()
+
+    data_uri = f"data:image/jpeg;base64,{base64.b64encode(compressed).decode()}"
+
+    # Default to in-memory DB context when no session needed
+    from app.db.database import _get_sessionmaker
+    from app.models.db_models import PersonaDB
+    from sqlalchemy import select
+
+    sessionmaker = _get_sessionmaker()
+    async with sessionmaker() as db:
+        result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
+        db_p = result.scalar_one_or_none()
+        if not db_p:
+            # Lazily create
+            engine = get_persona_engine()
+            p = engine.get(persona_id)
+            if not p:
+                raise HTTPException(status_code=404, detail="军师不存在")
+            db_p = PersonaDB(id=persona_id, name=p.name, title=p.title, category=p.category)
+            db.add(db_p)
+
+        db_p.avatar = data_uri
+        await db.commit()
+
+    return {"status": "ok", "avatar": data_uri}
 
 
 ALLOWED_EXTENSIONS = {".md", ".txt", ".markdown"}
@@ -304,14 +357,7 @@ async def _upsert_document(
     )
     db_p = db_persona.scalar_one_or_none()
     if not db_p:
-        engine = get_persona_engine()
-        p = engine.get(persona_id)
-        if p:
-            db_p = PersonaDB(
-                id=persona_id, name=p.name, title=p.title, category=p.category
-            )
-            db.add(db_p)
-            await db.flush()
+        raise HTTPException(status_code=404, detail="军师不存在")
 
     # Check if document exists
     existing_stmt = select(KnowledgeDocument).where(
@@ -596,3 +642,253 @@ async def delete_document(
     await db.delete(doc)
     await db.commit()
     return {"status": "deleted"}
+
+
+@router.post("/{persona_id}/enrich")
+async def enrich_advisor(
+    persona_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Use LLM to enrich a persona's thinking framework, voice, beliefs, and knowledge domain.
+
+    Only fills fields that are currently empty/default, preserving user-edited content.
+    """
+    import json as _json
+    from app.core.llm_client import chat
+
+    result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
+    db_p = result.scalar_one_or_none()
+    if not db_p:
+        raise HTTPException(status_code=404, detail="军师不存在")
+
+    basic_info = {
+        "name": db_p.name,
+        "title": db_p.title,
+        "category": db_p.category,
+        "era": db_p.era,
+        "short_bio": db_p.short_bio or "",
+        "style": db_p.style or "",
+    }
+
+    system_prompt = (
+        "你是一位精通中国历史文化和战略思维的专家。你的任务是根据一个历史/现代名人的基本信息，"
+        "为其生成深度的人格配置（persona configuration）。\n\n"
+        "输出必须是严格合法的JSON格式，不要有任何额外的解释文字。JSON结构如下：\n"
+        '{\n'
+        '  "thinking_framework": {\n'
+        '    "analysis": "分析问题的核心方式（1-2句话）",\n'
+        '    "decision": "做决策的模式（1-2句话）",\n'
+        '    "foresight": "预见/规划习惯（1-2句话）",\n'
+        '    "methodology": "核心方法论（1-2句话）"\n'
+        '  },\n'
+        '  "voice": {\n'
+        '    "tone": "语气特征（如：沉稳、犀利、幽默）",\n'
+        '    "style": "表达方式描述（1-2句话）",\n'
+        '    "length": "回答长度偏好（简短/中等/详细）",\n'
+        '    "opening": "典型的开场方式描述（1句话）"\n'
+        '  },\n'
+        '  "core_beliefs": ["核心信条1（15字以内）", "核心信条2（15字以内）", "核心信条3（15字以内）", "核心信条4（15字以内）"],\n'
+        '  "knowledge_domain": {\n'
+        '    "known": ["擅长领域1", "擅长领域2", "擅长领域3", "擅长领域4", "擅长领域5"],\n'
+        '    "unknown": ["不熟悉领域1", "不熟悉领域2", "不熟悉领域3"],\n'
+        '    "attitude_to_unknown": "对于不熟悉事物的态度（1句话）"\n'
+        '  },\n'
+        '  "canonical_works": [\n'
+        '    {"title": "代表作/名言/经典出处", "source": "来源或年份"},\n'
+        '    {"title": "代表作/名言/经典出处", "source": "来源或年份"}\n'
+        '  ]\n'
+        '}\n\n'
+        "要求：\n"
+        "1. 每个字段都要结合该人物的真实历史背景、思想和风格\n"
+        "2. 核心信条要体现该人物的核心价值观，用第一人称口吻\n"
+        "3. 知识边界要真实反映该人物所处时代的认知范围\n"
+        "4. 只输出JSON，不要任何其他内容"
+    )
+
+    user_prompt = _json.dumps(basic_info, ensure_ascii=False, indent=2)
+
+    try:
+        response = await chat(system_prompt, user_prompt, temperature=0.7)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM请求失败: {str(e)}")
+
+    # Extract JSON from response (may be wrapped in markdown code blocks)
+    text = response.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+        text = text.strip()
+
+    try:
+        enriched = _json.loads(text)
+    except _json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"LLM返回格式错误，请重试。原始响应: {text[:200]}",
+        )
+
+    # Only update fields that are currently empty/default / or always overwrite on enrich
+    tf = enriched.get("thinking_framework", {})
+    if isinstance(tf, dict) and tf.get("analysis"):
+        db_p.thinking_framework = tf
+
+    voice = enriched.get("voice", {})
+    if isinstance(voice, dict) and voice.get("tone"):
+        db_p.voice = voice
+
+    beliefs = enriched.get("core_beliefs", [])
+    if isinstance(beliefs, list) and len(beliefs) > 0:
+        db_p.core_beliefs = beliefs
+
+    works = enriched.get("canonical_works", [])
+    if isinstance(works, list) and len(works) > 0:
+        db_p.canonical_works = works
+
+    kd = enriched.get("knowledge_domain", {})
+    if isinstance(kd, dict) and kd.get("known"):
+        db_p.knowledge_domain = kd
+
+    await db.commit()
+    await db.refresh(db_p)
+
+    engine = get_persona_engine()
+    engine.add_persona(Persona.from_db_row(db_p))
+
+    return {
+        "status": "ok",
+        "thinking_framework": db_p.thinking_framework,
+        "voice": db_p.voice,
+        "core_beliefs": db_p.core_beliefs,
+        "canonical_works": db_p.canonical_works,
+        "knowledge_domain": db_p.knowledge_domain,
+    }
+
+
+@router.post("/{persona_id}/skill/generate")
+async def generate_skill(
+    persona_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Use LLM to generate a complete cognitive skill (cognitive OS) for this persona.
+
+    The skill includes: workflow, mental models, heuristics, expression DNA,
+    anti-patterns, limitations, and checkpoints — making the AI persona more
+    consistent and sophisticated in conversation.
+    """
+    import json as _json
+    from app.core.llm_client import chat
+    from app.services.skill_engine import get_skill_engine, Skill
+
+    result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
+    db_p = result.scalar_one_or_none()
+    if not db_p:
+        raise HTTPException(status_code=404, detail="军师不存在")
+
+    # Gather persona context for the LLM
+    context = {
+        "name": db_p.name,
+        "title": db_p.title,
+        "category": db_p.category,
+        "era": db_p.era,
+        "short_bio": db_p.short_bio or "",
+        "style": db_p.style or "",
+        "thinking_framework": db_p.thinking_framework or {},
+        "voice": db_p.voice or {},
+        "core_beliefs": db_p.core_beliefs or [],
+        "canonical_works": db_p.canonical_works or [],
+        "knowledge_domain": db_p.knowledge_domain or {},
+    }
+
+    system_prompt = (
+        '你是一位认知科学家，专门为AI角色设计「认知操作系统」（Cognitive Skill）。\n'
+        '你需要根据一个历史/现代名人的背景信息，生成一套完整的认知技能配置。\n\n'
+        '输出必须是严格合法的JSON格式，结构如下：\n'
+        '{'
+        '"name": "人物名称",'
+        '"version": "2.0",'
+        '"trigger_keywords": ["触发词1", "触发词2", "触发词3"],'
+        '"roleplay": {'
+        '"first_person": true,'
+        '"disclaimer_once": "一句免责声明（该人物的口吻）",'
+        '"exit_triggers": ["退出角色 触发词1", "触发词2"]'
+        '},'
+        '"workflow": {'
+        '"steps": ['
+        '{"step": "classify", "description": "判断问题类型：..."},'
+        '{"step": "retrieve", "description": "从知识库检索..."},'
+        '{"step": "reason", "description": "以该人物的思维框架推理"},'
+        '{"step": "self_check", "description": "开口前自查"},'
+        '{"step": "respond", "description": "输出回答"}'
+        '],'
+        '"checkpoints": ['
+        '{"id": "before_speak", "questions": ["自查问题1", "自查问题2"]},'
+        '{"id": "before_advise", "questions": ["自查问题3"]}'
+        '],'
+        '"fallback_tree": ['
+        '{"trigger": "知识库检索为空", "action": "坦诚告知..."},'
+        '{"trigger": "问题超出时代范围", "action": "用古代/原有智慧框架类比..."}'
+        ']'
+        '},'
+        '"mental_models": ['
+        '{"name": "心智模型1", "summary": "一句话描述", "evidence": ["证据1"], '
+        '"application": "如何应用", "limitation": "局限"}'
+        '],'
+        '"heuristics": ['
+        '{"name": "启发式1", "trigger": "触发场景", "action": "行动描述", "example": "举例"}'
+        '],'
+        '"expression": {'
+        '"sentence_patterns": ["句式1", "句式2"],'
+        '"tone": "语气描述",'
+        '"rhythm": "表达节奏",'
+        '"certainty": "结论的确定程度",'
+        '"vocabulary": {"preferred": ["偏好词"], "avoided": ["避免词"]}'
+        '},'
+        '"anti_patterns": ['
+        '{"pattern": "要避免的行为", "fix": "正确的做法"}'
+        '],'
+        '"limitations": ["能力边界1（诚实声明）", "能力边界2"]'
+        '}'
+        '\n\n要求：\n'
+        '1. 每个字段都要紧密结合该人物的真实背景、著作和思想风格\n'
+        '2. 心智模型(mental_models)要体现该人物最核心的思维特征，带evidence引用原文/历史事件\n'
+        '3. 决策启发式(heuristics)要把该人物的决策智慧变成可操作的trigger→action规则\n'
+        '4. 表达DNA(expression)要捕捉该人物的独特说话方式、常用句式、词汇偏好\n'
+        '5. 反例黑名单(anti_patterns)列3-5条该人物绝不会做的事\n'
+        '6. 诚实边界(limitations)要真实反映该人物的时代/知识局限\n'
+        '7. 只输出JSON，不要任何其他内容'
+    )
+
+    user_prompt = _json.dumps(context, ensure_ascii=False, indent=2)
+
+    try:
+        response = await chat(system_prompt, user_prompt, temperature=0.7)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM请求失败: {str(e)}")
+
+    # Extract JSON from response
+    text = response.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+        text = text.strip()
+
+    try:
+        skill_data = _json.loads(text)
+    except _json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"LLM返回格式错误，请重试。原始响应: {text[:200]}",
+        )
+
+    # Save to DB
+    db_p.skill_config = skill_data
+    await db.commit()
+    await db.refresh(db_p)
+
+    # Update in-memory engine
+    engine = get_skill_engine()
+    engine.add_skill(persona_id, skill_data)
+
+    return {"status": "ok", "skill": skill_data}

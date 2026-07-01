@@ -1,10 +1,4 @@
-import os
-from pathlib import Path
-from functools import lru_cache
-
-import yaml
-
-from app.core.config import settings
+from app.models.db_models import PersonaDB
 
 
 class Persona:
@@ -14,9 +8,9 @@ class Persona:
         self.title: str = data["title"]
         self.category: str = data["category"]
         self.era: str = data["era"]
-        self.avatar: str = data.get("avatar", "")
         self.short_bio: str = data.get("short_bio", "")
         self.style: str = data.get("style", "")
+        self.avatar: str = data.get("avatar", "")
 
         tf = data.get("thinking_framework", {})
         self.analysis: str = tf.get("analysis", "")
@@ -37,6 +31,24 @@ class Persona:
         self.known: list[str] = kd.get("known", [])
         self.unknown: list[str] = kd.get("unknown", [])
         self.attitude_to_unknown: str = kd.get("attitude_to_unknown", "")
+
+    @classmethod
+    def from_db_row(cls, row: PersonaDB) -> "Persona":
+        return cls({
+            "id": row.id,
+            "name": row.name,
+            "title": row.title,
+            "category": row.category,
+            "era": row.era,
+            "avatar": row.avatar or "",
+            "short_bio": row.short_bio or "",
+            "style": row.style or "",
+            "thinking_framework": row.thinking_framework or {},
+            "voice": row.voice or {},
+            "core_beliefs": row.core_beliefs or [],
+            "canonical_works": row.canonical_works or [],
+            "knowledge_domain": row.knowledge_domain or {},
+        })
 
     def build_system_prompt(self, rag_context: str = "", skill_prompt: str = "") -> str:
         beliefs_text = "\n".join(f"- {b}" for b in self.core_beliefs)
@@ -101,20 +113,16 @@ class Persona:
 class PersonaEngine:
     def __init__(self):
         self._personas: dict[str, Persona] = {}
-        self._load_all()
 
-    def _load_all(self):
-        personas_dir = Path(settings.personas_dir)
-        for f in personas_dir.glob("*.yaml"):
-            with open(f, "r", encoding="utf-8") as fp:
-                data = yaml.safe_load(fp)
-                persona = Persona(data)
-                self._personas[persona.id] = persona
-
-    def reload(self):
-        """Reload all personas from disk (for after YAML file changes)."""
+    def load_from_rows(self, rows: list[PersonaDB]):
+        """Load all personas from database rows."""
         self._personas.clear()
-        self._load_all()
+        for row in rows:
+            self._personas[row.id] = Persona.from_db_row(row)
+
+    def reload(self, rows: list[PersonaDB]):
+        """Reload all personas from fresh database rows."""
+        self.load_from_rows(rows)
 
     def list_all(self) -> list[Persona]:
         return list(self._personas.values())
@@ -124,6 +132,14 @@ class PersonaEngine:
 
     def get_many(self, ids: list[str]) -> list[Persona]:
         return [p for pid in ids if (p := self._personas.get(pid))]
+
+    def add_persona(self, persona: Persona):
+        """Add or update a single persona in the engine."""
+        self._personas[persona.id] = persona
+
+    def remove_persona(self, persona_id: str):
+        """Remove a persona from the engine."""
+        self._personas.pop(persona_id, None)
 
     def build_prompts(self, ids: list[str], rag_results: dict[str, str] | None = None) -> list[tuple[str, str]]:
         from app.services.skill_engine import get_skill_engine
@@ -139,6 +155,24 @@ class PersonaEngine:
         return result
 
 
-@lru_cache(maxsize=1)
+_engine_instance: PersonaEngine | None = None
+
+
 def get_persona_engine() -> PersonaEngine:
-    return PersonaEngine()
+    global _engine_instance
+    if _engine_instance is None:
+        _engine_instance = PersonaEngine()
+    return _engine_instance
+
+
+async def init_persona_engine():
+    """Initialize the persona engine by loading all personas from the database."""
+    from sqlalchemy import select
+    from app.db.database import _get_sessionmaker
+
+    engine = get_persona_engine()
+    sm = _get_sessionmaker()
+    async with sm() as db:
+        result = await db.execute(select(PersonaDB))
+        rows = result.scalars().all()
+        engine.load_from_rows(list(rows))

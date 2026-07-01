@@ -49,17 +49,27 @@ class PersonaDB(Base):
     title = Column(String(256), default="")
     category = Column(String(64), default="")
     era = Column(String(64), default="")
-    avatar = Column(String(512), default="")
+    avatar = Column(Text, default="")
     short_bio = Column(Text, default="")
     style = Column(Text, default="")
 
-    # YAML raw data
+    # Deep persona configuration (was in YAML, now in DB)
+    thinking_framework = Column(JSON, default=dict)
+    voice = Column(JSON, default=dict)
+    core_beliefs = Column(JSON, default=list)
+    canonical_works = Column(JSON, default=list)
+    knowledge_domain = Column(JSON, default=dict)
+
+    # Legacy YAML raw data (deprecated, kept for migration)
     yaml_config = Column(Text, default="")
 
     # Knowledge base status
     kb_status = Column(String(32), default="empty")  # empty, ingesting, ready, error
     kb_doc_count = Column(Integer, default=0)
     kb_last_ingested = Column(DateTime(timezone=True), nullable=True)
+
+    # Skill configuration (cognitive operating system)
+    skill_config = Column(JSON, default=None)
 
     # Publication
     is_published = Column(Boolean, default=False)

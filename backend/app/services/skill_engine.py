@@ -1,4 +1,4 @@
-"""Skill Engine — loads YAML skill definitions and enhances agent prompts.
+"""Skill Engine — loads skill definitions from DB and enhances agent prompts.
 
 A Skill extends the static Persona with:
 - Workflow steps (classify → retrieve → reason → self-check → respond)
@@ -9,10 +9,7 @@ A Skill extends the static Persona with:
 - Anti-patterns
 """
 
-from pathlib import Path
-from functools import lru_cache
-
-import yaml
+from app.models.db_models import PersonaDB
 
 
 class Skill:
@@ -41,7 +38,7 @@ class Skill:
         # Roleplay rules
         if self.first_person:
             sections.append(f"""## 角色扮演规则
-- 你是{self.name}本人，使用"我""吾""亮"等第一人称
+- 你是{self.name}本人，使用"我""吾"等第一人称
 - 首次对话可以说："{self.disclaimer}"，之后不必重复
 - 退出角色触发词：{', '.join(self.exit_triggers)}
 - 不去分析自己扮演得像不像，只是以{self.name}的身份思考和说话""")
@@ -122,30 +119,26 @@ class Skill:
 
 
 class SkillEngine:
-    """Loads and manages Skill definitions."""
+    """Loads and manages Skill definitions from DB."""
 
-    def __init__(self, skills_dir: str = None):
+    def __init__(self):
         self._skills: dict[str, Skill] = {}
-        if skills_dir:
-            self._dir = Path(skills_dir)
-        else:
-            from app.core.config import settings
-            self._dir = Path(settings.skills_dir)
-        self._load_all()
 
-    def _load_all(self):
-        if not self._dir.is_dir():
-            return
-        for persona_dir in self._dir.iterdir():
-            if not persona_dir.is_dir():
-                continue
-            skill_file = persona_dir / "skill.yaml"
-            if skill_file.exists():
-                with open(skill_file, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    skill = Skill(data)
-                    self._skills[persona_dir.name] = skill
-                    print(f"Skill loaded: {skill.name}")
+    def load_from_rows(self, rows: list[PersonaDB]):
+        """Load skills from database persona rows."""
+        self._skills.clear()
+        for row in rows:
+            if row.skill_config:
+                data = dict(row.skill_config)
+                self._skills[row.id] = Skill(data)
+
+    def add_skill(self, persona_id: str, skill_data: dict):
+        """Add or update a skill for a persona."""
+        self._skills[persona_id] = Skill(skill_data)
+
+    def remove_skill(self, persona_id: str):
+        """Remove a skill from the engine."""
+        self._skills.pop(persona_id, None)
 
     def has_skill(self, persona_id: str) -> bool:
         return persona_id in self._skills
@@ -161,6 +154,24 @@ class SkillEngine:
         return ""
 
 
-@lru_cache(maxsize=1)
+_skill_engine_instance: SkillEngine | None = None
+
+
 def get_skill_engine() -> SkillEngine:
-    return SkillEngine()
+    global _skill_engine_instance
+    if _skill_engine_instance is None:
+        _skill_engine_instance = SkillEngine()
+    return _skill_engine_instance
+
+
+async def init_skill_engine():
+    """Initialize the skill engine by loading all skills from the database."""
+    from sqlalchemy import select
+    from app.db.database import _get_sessionmaker
+
+    engine = get_skill_engine()
+    sm = _get_sessionmaker()
+    async with sm() as db:
+        result = await db.execute(select(PersonaDB))
+        rows = result.scalars().all()
+        engine.load_from_rows(list(rows))

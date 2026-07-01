@@ -66,7 +66,7 @@ export async function register(username: string, password: string, displayName?:
 // ── Advisors ────────────────────────────────────────────────────────
 
 export async function fetchAdvisors(): Promise<Advisor[]> {
-  const res = await fetch(`${API_BASE}/api/advisors`);
+  const res = await fetch(`${API_BASE}/api/advisors?_t=${Date.now()}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch advisors");
   return res.json();
 }
