@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor } from "@/lib/types";
-import { fetchAdvisors, createCouncil } from "@/lib/api";
+import { fetchAdvisors, createCouncil, getToken } from "@/lib/api";
 import AdvisorCard from "@/components/AdvisorCard/AdvisorCard";
 
 const CATEGORY_MAP: Record<string, { label: string; icon: string }> = {
@@ -65,6 +65,13 @@ export default function HomePage() {
 
   const handleConsult = async () => {
     if (selected.size === 0) return;
+
+    const token = getToken();
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
     setLoading(true);
     try {
       const ids = Array.from(selected);
