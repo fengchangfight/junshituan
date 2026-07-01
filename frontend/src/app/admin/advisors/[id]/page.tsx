@@ -537,7 +537,7 @@ export default function AdvisorKBPage() {
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => handlePublish(true)}
-              disabled={publishing || advisor.kb_status !== "ready"}
+              disabled={publishing || (advisor.kb_status !== "ready" && !advisor.thinking_framework?.analysis && !advisor.skill_config)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 text-sm font-medium hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send size={16} />

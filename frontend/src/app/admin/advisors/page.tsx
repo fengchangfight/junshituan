@@ -450,14 +450,17 @@ export default function AdminAdvisorsPage() {
                   {adv.kb_doc_count > 0 && (
                     <span className="text-xs text-ink-600">{adv.kb_doc_count} 条索引</span>
                   )}
-                  {adv.is_published && (
+                  {adv.is_published ? (
                     <span className="text-[10px] bg-emerald-900/40 text-emerald-400 px-2 py-0.5 rounded-full">
                       已发布
                     </span>
-                  )}
-                  {!adv.is_published && adv.kb_status === "ready" && (
+                  ) : adv.kb_status === "ready" ? (
                     <span className="text-[10px] bg-amber-900/40 text-amber-400 px-2 py-0.5 rounded-full">
                       未发布
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-ink-800 text-ink-500 px-2 py-0.5 rounded-full">
+                      未配置
                     </span>
                   )}
                 </div>

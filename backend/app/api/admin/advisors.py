@@ -746,7 +746,13 @@ async def publish_advisor(
         db.add(db_p)
 
     if req.publish and db_p.kb_status != "ready":
-        raise HTTPException(status_code=400, detail="请先完成知识库消化再发布")
+        # Allow publish without ingested docs if persona has meaningful config
+        has_config = (
+            (db_p.thinking_framework and db_p.thinking_framework.get("analysis")) or
+            db_p.skill_config
+        )
+        if not has_config:
+            raise HTTPException(status_code=400, detail="请先完成知识库消化，或用 AI 充实人格配置后再发布")
 
     db_p.is_published = req.publish
     db_p.published_at = datetime.now(timezone.utc) if req.publish else None
