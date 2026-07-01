@@ -98,7 +98,7 @@ class MilvusStore:
                     if f.get("name") == "embedding":
                         existing_dim = (f.get("params") or {}).get("dim", 0)
                         if existing_dim and existing_dim != d:
-                            print(f"[Milvus] dim mismatch: existing={existing_dim}, new={d}, recreating collection")
+                            print(f"[Milvus] dim mismatch: existing={existing_dim}, new={d}. Dropping ALL data — re-ingest needed for ALL personas.")
                             self.client.drop_collection(COLLECTION_NAME)
                             self._loaded = False
                             break

@@ -670,9 +670,10 @@ async def ingest_knowledge(
         raise HTTPException(status_code=400, detail="该军师没有已上传的知识文档")
 
     if req.force:
-        # Drop collection and docstore for clean rebuild
+        # Delete this persona's nodes from shared collection
         from app.services.ingestion.milvus_store import milvus_store as _ms
-        _ms.delete_persona(req.persona_id)
+        deleted = _ms.delete_persona(req.persona_id)
+        print(f"[Ingest] force rebuild: deleted {deleted} nodes for {req.persona_id}")
         docstore_path = os.path.join("data", "docstore", f"{req.persona_id}.json")
         if os.path.exists(docstore_path):
             os.remove(docstore_path)
