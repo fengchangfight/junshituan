@@ -158,7 +158,7 @@ class _LlamaEmbedAdapter(TransformComponent):
         if not texts:
             return nodes
 
-        embeddings = asyncio.run(self._provider.embed(texts))
+        embeddings = self._provider.embed_sync(texts)
         for node, emb in zip(nodes, embeddings):
             node.embedding = emb
         return nodes

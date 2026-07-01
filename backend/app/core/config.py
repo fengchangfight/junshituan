@@ -7,16 +7,11 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.deepseek.com/v1"
     llm_model: str = "deepseek-v4-pro"
 
-    # ── Embeddings ──────────────────────────────────────────────────────
-    # Dev: set LOCAL_EMBEDDING=true → uses sentence-transformers (free, no API key)
-    # Prod: LOCAL_EMBEDDING=false → uses OpenAI text-embedding-3-small via API
-    local_embedding: bool = True
-    local_embedding_model: str = "BAAI/bge-small-zh-v1.5"
-    # OpenAI embedding (prod fallback)
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dim: int = 512  # bge-small-zh-v1.5 = 512; text-embedding-3-small = 1536
-    embedding_base_url: str = "https://api.openai.com/v1"
+    # ── Embeddings (Zhipu embedding-2) ──────────────────────────────────
     embedding_api_key: str = ""
+    embedding_model: str = "embedding-2"
+    embedding_dim: int = 1024
+    embedding_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
 
     # ── Budget (per session, CNY) ───────────────────────────────────────
     max_budget_per_session_cny: float = 15.0

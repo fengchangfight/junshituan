@@ -85,11 +85,27 @@ class MilvusStore:
     # ── Collection management ──────────────────────────────────────────
 
     def ensure_collection(self, dim: int = None):
-        """Create the single shared collection if it doesn't exist."""
+        """Create the single shared collection if it doesn't exist.
+        If exists but dimension mismatches, recreate it (data will be lost, re-ingest needed)."""
         self._lazy_init()
         d = dim or settings.embedding_dim
         if self.client.has_collection(COLLECTION_NAME):
-            return
+            # Check if dimension matches
+            try:
+                desc = self.client.describe_collection(COLLECTION_NAME)
+                fields = desc.get("fields", [])
+                for f in fields:
+                    if f.get("name") == "embedding":
+                        existing_dim = (f.get("params") or {}).get("dim", 0)
+                        if existing_dim and existing_dim != d:
+                            print(f"[Milvus] dim mismatch: existing={existing_dim}, new={d}, recreating collection")
+                            self.client.drop_collection(COLLECTION_NAME)
+                            self._loaded = False
+                            break
+            except Exception:
+                pass
+            else:
+                return  # Collection exists with correct dim
         try:
             schema = self.client.create_schema(auto_id=False, enable_dynamic_field=False)
             schema.add_field(field_name="id", datatype=DataType.VARCHAR, is_primary=True, max_length=256)

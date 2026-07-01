@@ -77,13 +77,3 @@ async def chat(
         temperature=temperature,
     )
     return response.choices[0].message.content or ""
-
-
-async def get_embedding(text: str) -> tuple[list[float], int]:
-    """Get embedding vector. Returns (embedding, tokens_used)."""
-    response = await _get_client().embeddings.create(
-        model=settings.embedding_model,
-        input=[text],
-    )
-    tokens = response.usage.total_tokens if response.usage else len(text) // 3
-    return response.data[0].embedding, tokens
