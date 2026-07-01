@@ -62,9 +62,10 @@ export default function HomePage() {
     setLoading(true);
     try {
       const ids = Array.from(selected);
-      const council = await createCouncil(ids);
       const names = ids.map((id) => advisors.find((a) => a.id === id)?.name || id);
-      router.push(`/council?id=${council.id}&advisors=${ids.join(",")}&title=${encodeURIComponent(names.join("、") + "的议事厅")}`);
+      const title = names.join("、") + "的议事厅";
+      const council = await createCouncil(ids, title);
+      router.push(`/council?id=${council.id}&advisors=${ids.join(",")}&title=${encodeURIComponent(title)}`);
     } catch { setLoading(false); }
   };
 
@@ -77,7 +78,7 @@ export default function HomePage() {
         className="text-center mb-8 sm:mb-10"
       >
         <h1 className="text-2xl sm:text-3xl font-display text-ancient-400 tracking-wider mb-3">
-          &#9876;&#65039; 创建议事厅
+          ⚔️ 创建议事厅
         </h1>
         <p className="text-sm text-ink-400 max-w-lg mx-auto">
           召集 1-5 位历史智者组成专属顾问团，向他们请教任何问题
@@ -181,7 +182,7 @@ export default function HomePage() {
                 disabled={loading}
                 className="px-5 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-ancient-600 to-ancient-500 text-white rounded-xl font-bold text-sm sm:text-base shadow-lg shadow-ancient-600/30 disabled:opacity-50"
               >
-                {loading ? "召集军师中..." : `&#9876;&#65039; 开始议事`}
+                {loading ? "召集军师中..." : "⚔️ 开始议事"}
               </motion.button>
             </div>
           </motion.div>
