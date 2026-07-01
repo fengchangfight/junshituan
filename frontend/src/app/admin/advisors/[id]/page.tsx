@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -61,6 +61,10 @@ export default function AdvisorKBPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
 
+  const [dragOver, setDragOver] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [editingMeta, setEditingMeta] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
   const [metaForm, setMetaForm] = useState({
@@ -92,6 +96,7 @@ export default function AdvisorKBPage() {
           style: data.style || "",
         });
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
   };
 
@@ -128,6 +133,55 @@ export default function AdvisorKBPage() {
   const validateFilename = (name: string): boolean => {
     const ext = name.split(".").pop()?.toLowerCase() || "";
     return ext === "md" || ext === "txt" || ext === "markdown";
+  };
+
+  const handleFile = (file: File) => {
+    if (!validateFilename(file.name)) {
+      setError("仅支持 .md 和 .txt 格式的文件");
+      return;
+    }
+    setError("");
+    setSelectedFile(file);
+    setDocFilename(file.name);
+    const title = file.name.replace(/\.[^.]+$/, "");
+    setDocTitle(title);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setTextContent(content);
+    };
+    reader.onerror = () => {
+      setError("文件读取失败");
+    };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setTextContent("");
+    setDocTitle("");
+    setDocFilename("untitled.txt");
   };
 
   const handleUpload = async () => {
@@ -182,7 +236,7 @@ export default function AdvisorKBPage() {
     }
   };
 
-  const handleIngest = async () => {
+  const handleIngest = async (force = false) => {
     setIngesting(true);
     setError("");
 
@@ -193,7 +247,7 @@ export default function AdvisorKBPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ persona_id: personaId }),
+        body: JSON.stringify({ persona_id: personaId, force }),
       });
 
       if (!res.ok) {
@@ -201,6 +255,8 @@ export default function AdvisorKBPage() {
         throw new Error(err.detail || "消化失败");
       }
 
+      const result = await res.json();
+      if (result.message) setSuccessMsg(result.message);
       fetchAdvisor();
     } catch (err: any) {
       setError(err.message);
@@ -275,12 +331,22 @@ export default function AdvisorKBPage() {
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            onClick={handleIngest}
+            onClick={() => handleIngest(false)}
             disabled={ingesting || advisor.documents.length === 0}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600/20 border border-amber-600/40 text-amber-400 text-sm font-medium hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {ingesting ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
             消化
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => handleIngest(true)}
+            disabled={ingesting || advisor.documents.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600/10 border border-red-600/30 text-red-400 text-sm font-medium hover:bg-red-600/20 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            强制重建
           </motion.button>
 
           {advisor.is_published ? (
@@ -431,37 +497,96 @@ export default function AdvisorKBPage() {
             <Upload size={18} /> 添加知识文档 (.md / .txt)
           </h3>
 
-          <div>
-            <label className="text-xs text-ink-500 mb-1 block">文件名（唯一标识）</label>
-            <div className="flex gap-2">
+          {/* Drag-drop zone */}
+          {!selectedFile ? (
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onClick={() => fileInputRef.current?.click()}
+              className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                dragOver
+                  ? "border-ancient-500 bg-ancient-900/20"
+                  : "border-ink-700/50 hover:border-ink-600/50 bg-ink-900/30"
+              }`}
+            >
               <input
-                type="text"
-                value={docFilename}
-                onChange={(e) => setDocFilename(e.target.value)}
-                placeholder="chuanshilu.md"
-                className="flex-1 bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-2.5 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50 font-mono"
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.txt,.markdown"
+                onChange={handleFileInput}
+                className="hidden"
               />
+              <div className="flex flex-col items-center gap-2">
+                <Upload size={28} className={dragOver ? "text-ancient-400" : "text-ink-600"} />
+                <p className="text-sm text-ink-400">
+                  拖拽文件到此处，或<span className="text-ancient-400">点击选择</span>
+                </p>
+                <p className="text-xs text-ink-600">仅支持 .md / .txt 格式</p>
+              </div>
             </div>
-            <p className="text-[10px] text-ink-600 mt-1">
-              同名文件上传会覆盖旧版本，ID不变，触发重新消化
-            </p>
-          </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-ink-900/50 border border-ancient-700/30">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText size={16} className="text-ancient-400 shrink-0" />
+                  <span className="text-sm text-ink-200 truncate">{selectedFile.name}</span>
+                </div>
+                <button
+                  onClick={clearFile}
+                  className="p-1 rounded hover:bg-red-900/30 text-ink-500 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div className="text-xs text-ink-600">
+                标题: {docTitle} · {selectedFile.size > 1024 ? `${(selectedFile.size / 1024).toFixed(1)} KB` : `${selectedFile.size} B`}
+              </div>
+            </div>
+          )}
 
-          <input
-            type="text"
-            value={docTitle}
-            onChange={(e) => setDocTitle(e.target.value)}
-            placeholder="文档标题（如：传习录）"
-            className="w-full bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-2.5 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50"
-          />
+          {/* Optional: manual edit of extracted content */}
+          {selectedFile && (
+            <details className="text-xs text-ink-500">
+              <summary className="cursor-pointer hover:text-ink-400">查看/编辑文本内容</summary>
+              <textarea
+                value={textContent}
+                onChange={(e) => setTextContent(e.target.value)}
+                rows={8}
+                className="w-full mt-2 bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-3 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50 font-mono resize-y"
+              />
+            </details>
+          )}
 
-          <textarea
-            value={textContent}
-            onChange={(e) => setTextContent(e.target.value)}
-            placeholder="粘贴 .md 或 .txt 内容到这里..."
-            rows={12}
-            className="w-full bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-3 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50 font-mono resize-y"
-          />
+          {/* Fallback: paste mode */}
+          {!selectedFile && (
+            <details className="text-xs text-ink-500">
+              <summary className="cursor-pointer hover:text-ink-400">或手动粘贴文本</summary>
+              <div className="mt-2 space-y-3">
+                <input
+                  type="text"
+                  value={docFilename}
+                  onChange={(e) => setDocFilename(e.target.value)}
+                  placeholder="文件名（如 chuanshilu.md）"
+                  className="w-full bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-2.5 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50 font-mono"
+                />
+                <input
+                  type="text"
+                  value={docTitle}
+                  onChange={(e) => setDocTitle(e.target.value)}
+                  placeholder="文档标题（如：传习录）"
+                  className="w-full bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-2.5 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50"
+                />
+                <textarea
+                  value={textContent}
+                  onChange={(e) => setTextContent(e.target.value)}
+                  placeholder="粘贴 .md 或 .txt 内容到这里..."
+                  rows={10}
+                  className="w-full bg-ink-900/80 border border-ink-700/50 rounded-xl px-4 py-3 text-sm text-ink-100 placeholder:text-ink-600 focus:outline-none focus:border-ancient-600/50 font-mono resize-y"
+                />
+              </div>
+            </details>
+          )}
 
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -476,7 +601,7 @@ export default function AdvisorKBPage() {
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
-                <Upload size={16} /> 上传文档
+                <Upload size={16} /> {selectedFile ? `上传 ${selectedFile.name}` : "上传文档"}
               </span>
             )}
           </motion.button>

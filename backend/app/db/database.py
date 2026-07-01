@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 
 from app.core.config import settings
 
@@ -36,3 +37,10 @@ async def get_db() -> AsyncSession:
 async def init_db():
     async with _get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Auto-migration: add columns that may be missing on existing tables
+        try:
+            await conn.execute(text(
+                "ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64) DEFAULT ''"
+            ))
+        except Exception:
+            pass  # SQLite doesn't support ADD COLUMN IF NOT EXISTS

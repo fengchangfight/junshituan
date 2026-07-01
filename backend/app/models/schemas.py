@@ -44,6 +44,7 @@ class KnowledgeDocOut(BaseModel):
 
 class IngestRequest(BaseModel):
     persona_id: str
+    force: bool = False  # If True, drop collection + docstore, rebuild from scratch
 
 
 class PublishRequest(BaseModel):

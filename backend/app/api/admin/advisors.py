@@ -291,10 +291,12 @@ async def _upsert_document(
     db: AsyncSession,
 ) -> KnowledgeDocument:
     """Upsert a knowledge document. Same filename overwrites, ID stays the same."""
+    import hashlib
     from datetime import datetime, timezone
 
     doc_id = KnowledgeDocument.make_id(persona_id, filename)
     content_type = _content_type_from_filename(filename)
+    content_hash = hashlib.sha256((title + content).encode()).hexdigest()
 
     # Ensure PersonaDB record exists FIRST (before any doc queries trigger autoflush)
     db_persona = await db.execute(
@@ -320,13 +322,17 @@ async def _upsert_document(
     existing = result.scalar_one_or_none()
 
     if existing:
+        old_hash = existing.content_hash
         existing.content = content
         existing.title = title or existing.title
         existing.file_path = file_path or existing.file_path
         existing.content_type = content_type
-        existing.status = "pending_reingest"
+        existing.content_hash = content_hash
         existing.chunk_count = 0
         existing.updated_at = datetime.now(timezone.utc)
+        # Only mark for re-ingest if content actually changed
+        if old_hash != content_hash or existing.status not in ("ingested",):
+            existing.status = "pending_reingest"
         doc = existing
     else:
         doc = KnowledgeDocument(
@@ -337,6 +343,7 @@ async def _upsert_document(
             content=content,
             content_type=content_type,
             file_path=file_path,
+            content_hash=content_hash,
             status="pending",
         )
         db.add(doc)
@@ -461,7 +468,13 @@ async def ingest_knowledge(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    """Ingest all pending documents for a persona into Milvus."""
+    """Ingest documents for a persona into Milvus.
+
+    If force=True: drop collection + docstore, rebuild from scratch (no dedup).
+    Otherwise: skip if no document content has changed since last ingest.
+    """
+    import hashlib
+
     db_persona = await db.execute(
         select(PersonaDB).where(PersonaDB.id == req.persona_id)
     )
@@ -469,7 +482,6 @@ async def ingest_knowledge(
     if not db_p:
         raise HTTPException(status_code=404, detail="军师不存在")
 
-    # Get ALL documents for this persona (rebuild full index every time)
     all_docs_stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.persona_id == req.persona_id,
     )
@@ -479,17 +491,39 @@ async def ingest_knowledge(
     if not all_docs:
         raise HTTPException(status_code=400, detail="该军师没有已上传的知识文档")
 
-    # Update status to ingesting
+    if req.force:
+        # Drop collection and docstore for clean rebuild
+        from app.services.ingestion.milvus_store import milvus_store as _ms
+        _ms.delete_collection(req.persona_id)
+        docstore_path = os.path.join("data", "docstore", f"{req.persona_id}.json")
+        if os.path.exists(docstore_path):
+            os.remove(docstore_path)
+        # Mark all docs for processing
+        for d in all_docs:
+            d.content_hash = hashlib.sha256((d.title + d.content).encode()).hexdigest()
+            d.status = "processing"
+    else:
+        # Compute current hashes and detect changes
+        needs_ingest = False
+        for d in all_docs:
+            current_hash = hashlib.sha256((d.title + d.content).encode()).hexdigest()
+            if d.status != "ingested" or d.content_hash != current_hash:
+                needs_ingest = True
+                d.content_hash = current_hash
+                d.status = "processing"
+
+        if not needs_ingest:
+            return {"status": "ready", "chunks": db_p.kb_doc_count, "message": "所有文档已是最新，无需消化"}
+
     db_p.kb_status = "ingesting"
-    for d in all_docs:
-        d.status = "processing"
     await db.commit()
 
     try:
         texts = [d.content for d in all_docs]
         sources = [d.filename for d in all_docs]
+        doc_hashes = [d.content_hash for d in all_docs]
         total_chunks = await ingest_pipeline.ingest_text(
-            req.persona_id, texts, sources
+            req.persona_id, texts, sources, doc_hashes=doc_hashes
         )
 
         db_p.kb_status = "ready"

@@ -9,13 +9,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const pathname = usePathname();
   const [token, setToken] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
 
   useEffect(() => {
     const t = localStorage.getItem("junshituan_token");
     if (!t && pathname !== "/admin/login") {
       router.push("/admin/login");
+    } else if (t) {
+      setToken(t);
+      try {
+        const payload = JSON.parse(atob(t.split(".")[1]));
+        setUsername(payload.username || payload.sub || "");
+      } catch {}
     }
-    setToken(t);
   }, [pathname]);
 
   const handleLogout = () => {
@@ -52,6 +58,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Link href="/" className="text-xs text-ink-500 hover:text-ink-300">
               返回前台
             </Link>
+            {username && (
+              <span className="text-xs text-ink-400">{username}</span>
+            )}
             <button
               onClick={handleLogout}
               className="text-xs text-ink-400 hover:text-red-400 flex items-center gap-1"

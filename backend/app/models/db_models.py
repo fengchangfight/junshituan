@@ -84,6 +84,7 @@ class KnowledgeDocument(Base):
     file_path = Column(String(512), default="")  # absolute path for display
     chunk_count = Column(Integer, default=0)
     status = Column(String(32), default="pending")  # pending, processing, ingested, error, pending_reingest
+    content_hash = Column(String(64), default="")   # SHA256(title + content) for dedup
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
