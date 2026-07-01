@@ -6,9 +6,12 @@
 
 首次部署时通过 API 创建管理员：
 ```bash
-curl -X POST http://localhost:8000/api/auth/admin/create \
+curl -s -X POST http://localhost:8000/api/auth/admin/create \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
+
+# Windows PowerShell:
+Invoke-WebRequest -Uri http://localhost:8000/api/auth/admin/create -Method Post -ContentType "application/json" -Body '{"username":"admin","password":"admin123"}'
 ```
 
 ## 知识库管理流程

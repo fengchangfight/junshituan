@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=ZCOOL+KuaiLe&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=ZCOOL+KuaiLe&display=swap');
 
 @layer base {
   body {
@@ -11,6 +11,9 @@
 }
 
 @layer components {
+  .safe-area-bottom {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: theme('colors.ancient.700') transparent;

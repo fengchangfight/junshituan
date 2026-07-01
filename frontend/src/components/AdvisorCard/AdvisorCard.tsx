@@ -43,6 +43,7 @@ export default function AdvisorCard({
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{
         opacity: disabled ? 0.3 : 1,
+        pointerEvents: disabled ? "none" : "auto",
         scale: 1,
         borderColor: selected ? "rgb(212,133,44)" : undefined,
       }}

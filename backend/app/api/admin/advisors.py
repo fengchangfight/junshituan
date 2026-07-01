@@ -1,5 +1,7 @@
 """Admin API: Knowledge base management for advisors."""
 
+import os
+import yaml
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -15,12 +17,14 @@ from app.models.schemas import (
     KnowledgeDocUpload,
     IngestRequest,
     PublishRequest,
+    PersonaCreate,
     PersonaUpdate,
 )
 from app.core.security import require_admin
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.agent.agent_registry import agent_registry
 from app.services.persona_engine import get_persona_engine
+from app.core.config import settings
 
 router = APIRouter(prefix="/api/admin/advisors", tags=["admin-advisors"])
 
@@ -81,6 +85,69 @@ async def list_advisors(
         )
 
     return result
+
+
+@router.post("", status_code=201)
+async def create_advisor(
+    req: PersonaCreate,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Create a new advisor persona (writes YAML file + DB record)."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", req.id):
+        raise HTTPException(status_code=400, detail="军师ID只能包含字母、数字、下划线和连字符")
+
+    engine = get_persona_engine()
+    if engine.get(req.id):
+        raise HTTPException(status_code=409, detail=f"军师 '{req.id}' 已存在")
+
+    yaml_path = os.path.join(settings.personas_dir, f"{req.id}.yaml")
+    os.makedirs(settings.personas_dir, exist_ok=True)
+
+    data = {
+        "id": req.id,
+        "name": req.name,
+        "title": req.title,
+        "category": req.category,
+        "era": req.era,
+        "avatar": req.avatar,
+        "short_bio": req.short_bio,
+        "style": req.style,
+        "thinking_framework": {
+            "analysis": "",
+            "decision": "",
+            "foresight": "",
+            "methodology": "",
+        },
+        "voice": {
+            "tone": "",
+            "style": "",
+            "length": "中等",
+            "opening": "",
+        },
+        "core_beliefs": [],
+        "canonical_works": [],
+        "knowledge_domain": {
+            "known": [],
+            "unknown": [],
+            "attitude_to_unknown": "",
+        },
+    }
+
+    with open(yaml_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    engine.reload()
+
+    db_p = PersonaDB(
+        id=req.id, name=req.name, title=req.title, category=req.category,
+        avatar=req.avatar, era=req.era, is_published=False,
+    )
+    db.add(db_p)
+    await db.commit()
+
+    return {"id": req.id, "message": "创建成功"}
 
 
 @router.get("/{persona_id}", response_model=AdvisorAdminOut)
@@ -144,13 +211,12 @@ async def update_advisor(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    """Update advisor metadata or YAML config."""
+    """Update advisor metadata and sync to YAML."""
     engine = get_persona_engine()
     p = engine.get(persona_id)
     if not p:
         raise HTTPException(status_code=404, detail="军师不存在")
 
-    # Upsert PersonaDB
     db_persona = await db.execute(
         select(PersonaDB).where(PersonaDB.id == persona_id)
     )
@@ -162,6 +228,8 @@ async def update_advisor(
             name=p.name,
             title=p.title,
             category=p.category,
+            era=p.era,
+            avatar=p.avatar,
             yaml_config="",
         )
         db.add(db_p)
@@ -172,10 +240,35 @@ async def update_advisor(
         db_p.title = data.title
     if data.category is not None:
         db_p.category = data.category
+    if data.era is not None:
+        db_p.era = data.era
+    if data.avatar is not None:
+        db_p.avatar = data.avatar
+    if data.short_bio is not None:
+        db_p.short_bio = data.short_bio
+    if data.style is not None:
+        db_p.style = data.style
     if data.yaml_config is not None:
         db_p.yaml_config = data.yaml_config
 
     await db.commit()
+
+    # Sync to YAML file
+    yaml_path = os.path.join(settings.personas_dir, f"{persona_id}.yaml")
+    if os.path.exists(yaml_path):
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            ydata = yaml.safe_load(f) or {}
+        ydata["name"] = db_p.name
+        ydata["title"] = db_p.title
+        ydata["category"] = db_p.category
+        ydata["era"] = db_p.era or ""
+        ydata["avatar"] = db_p.avatar or ""
+        ydata["short_bio"] = db_p.short_bio or ""
+        ydata["style"] = db_p.style or ""
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            yaml.dump(ydata, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        engine.reload()
+
     return {"status": "ok"}
 
 
@@ -202,6 +295,21 @@ async def _upsert_document(
 
     doc_id = KnowledgeDocument.make_id(persona_id, filename)
     content_type = _content_type_from_filename(filename)
+
+    # Ensure PersonaDB record exists FIRST (before any doc queries trigger autoflush)
+    db_persona = await db.execute(
+        select(PersonaDB).where(PersonaDB.id == persona_id)
+    )
+    db_p = db_persona.scalar_one_or_none()
+    if not db_p:
+        engine = get_persona_engine()
+        p = engine.get(persona_id)
+        if p:
+            db_p = PersonaDB(
+                id=persona_id, name=p.name, title=p.title, category=p.category
+            )
+            db.add(db_p)
+            await db.flush()
 
     # Check if document exists
     existing_stmt = select(KnowledgeDocument).where(
@@ -232,20 +340,6 @@ async def _upsert_document(
             status="pending",
         )
         db.add(doc)
-
-    # Ensure PersonaDB record exists
-    db_persona = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == persona_id)
-    )
-    db_p = db_persona.scalar_one_or_none()
-    if not db_p:
-        engine = get_persona_engine()
-        p = engine.get(persona_id)
-        if p:
-            db_p = PersonaDB(
-                id=persona_id, name=p.name, title=p.title, category=p.category
-            )
-            db.add(db_p)
 
     await db.commit()
     await db.refresh(doc)
@@ -375,23 +469,13 @@ async def ingest_knowledge(
     if not db_p:
         raise HTTPException(status_code=404, detail="军师不存在")
 
-    # Get all documents that need processing
-    docs_stmt = select(KnowledgeDocument).where(
-        KnowledgeDocument.persona_id == req.persona_id,
-        KnowledgeDocument.status.in_(["pending", "pending_reingest", "error"]),
-    )
-    docs_result = await db.execute(docs_stmt)
-    docs = list(docs_result.scalars().all())
-
-    # Also include already-ingested docs (need to rebuild whole index)
+    # Get ALL documents for this persona (rebuild full index every time)
     all_docs_stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.persona_id == req.persona_id,
-        KnowledgeDocument.status.in_(["ingested"]),
     )
     all_docs_result = await db.execute(all_docs_stmt)
-    ingested_docs = list(all_docs_result.scalars().all())
+    all_docs = list(all_docs_result.scalars().all())
 
-    all_docs = docs + ingested_docs
     if not all_docs:
         raise HTTPException(status_code=400, detail="该军师没有已上传的知识文档")
 
@@ -413,19 +497,22 @@ async def ingest_knowledge(
         db_p.kb_last_ingested = datetime.now(timezone.utc)
         for d in all_docs:
             d.status = "ingested"
-            d.chunk_count = total_chunks // len(all_docs) if all_docs else 0
-
-        # Invalidate agent so it picks up new KB
+            d.chunk_count = max(1, total_chunks // len(all_docs))
         agent_registry.remove(req.persona_id)
+        await db.commit()
+        return {"status": "ready", "chunks": total_chunks}
 
     except Exception as e:
-        db_p.kb_status = "error"
-        for d in docs:
-            d.status = "error"
+        import traceback
+        traceback.print_exc()
+        try:
+            db_p.kb_status = "error"
+            for d in all_docs:
+                d.status = "error"
+            await db.commit()
+        except Exception:
+            traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"摄入失败: {e}")
-
-    await db.commit()
-    return {"status": "ready", "chunks": total_chunks}
 
 
 @router.post("/publish")

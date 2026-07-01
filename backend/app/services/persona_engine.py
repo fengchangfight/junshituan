@@ -111,6 +111,11 @@ class PersonaEngine:
                 persona = Persona(data)
                 self._personas[persona.id] = persona
 
+    def reload(self):
+        """Reload all personas from disk (for after YAML file changes)."""
+        self._personas.clear()
+        self._load_all()
+
     def list_all(self) -> list[Persona]:
         return list(self._personas.values())
 

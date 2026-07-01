@@ -60,9 +60,12 @@ docker compose up -d
 docker compose up -d postgres milvus etcd minio
 
 # 4. 创建管理员账户
-curl -X POST http://localhost:8000/api/auth/admin/create \
+curl -s -X POST http://localhost:8000/api/auth/admin/create \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
+
+# Windows PowerShell:
+iwr -Uri http://localhost:8000/api/auth/admin/create -Method Post -ContentType "application/json" -Body '{"username":"admin","password":"admin123"}'
 
 # 5. 打开前端
 #    用户端: http://localhost:3000

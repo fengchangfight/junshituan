@@ -34,8 +34,8 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     display_name = Column(String(128), default="")
     avatar_url = Column(String(512), default="")
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     sessions = relationship("Session", back_populates="user")
     memories = relationship("UserMemory", back_populates="user")
@@ -59,14 +59,14 @@ class PersonaDB(Base):
     # Knowledge base status
     kb_status = Column(String(32), default="empty")  # empty, ingesting, ready, error
     kb_doc_count = Column(Integer, default=0)
-    kb_last_ingested = Column(DateTime, nullable=True)
+    kb_last_ingested = Column(DateTime(timezone=True), nullable=True)
 
     # Publication
     is_published = Column(Boolean, default=False)
-    published_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     documents = relationship("KnowledgeDocument", back_populates="persona", cascade="all, delete-orphan")
 
@@ -84,8 +84,8 @@ class KnowledgeDocument(Base):
     file_path = Column(String(512), default="")  # absolute path for display
     chunk_count = Column(Integer, default=0)
     status = Column(String(32), default="pending")  # pending, processing, ingested, error, pending_reingest
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     persona = relationship("PersonaDB", back_populates="documents")
 
@@ -117,8 +117,8 @@ class Session(Base):
     budget_data = Column(JSON, nullable=True)
 
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="sessions")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.sequence")
@@ -137,7 +137,7 @@ class ChatMessage(Base):
     content = Column(Text, default="")
     metadata_ = Column("metadata", JSON, default=dict)
 
-    created_at = Column(DateTime, default=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     session = relationship("Session", back_populates="messages")
 
@@ -154,8 +154,8 @@ class UserMemory(Base):
     importance = Column(Float, default=0.5)  # 0.0-1.0
     source_session_id = Column(String, nullable=True)
     access_count = Column(Integer, default=0)
-    last_accessed = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=utcnow)
+    last_accessed = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="memories")
 
@@ -170,4 +170,4 @@ class AgentCheckpoint(Base):
     advisor_id = Column(String(64), nullable=False)
     checkpoint_ns = Column(String(256), default="")
     checkpoint_data = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)

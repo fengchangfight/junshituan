@@ -1,21 +1,17 @@
-"""Knowledge ingestion pipeline — hybrid search (dense + BM25).
+"""Knowledge ingestion pipeline — powered by llama-index (chunking + embedding) + custom Milvus hybrid search."""
 
-Embedding backend:
-- LOCAL_EMBEDDING=true  → sentence-transformers (BGE, 512 dim)
-- LOCAL_EMBEDDING=false → OpenAI text-embedding-3-small (1536 dim)
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core import Document as LlamaDocument
 
-BM25 sparse vectors are always generated alongside dense embeddings.
-"""
-
-import asyncio
-from typing import Optional
-
-from app.core.config import settings
 from app.core.embedding import embedding_provider
 from app.services.ingestion.milvus_store import milvus_store
 
+BATCH_SIZE = 32
+MAX_CHUNKS_PER_INGEST = 10000
+
 
 class IngestionPipeline:
+    """Two-pass ingestion: fit BM25 on full corpus, then embed + insert in batches."""
 
     async def ingest_text(
         self,
@@ -25,55 +21,78 @@ class IngestionPipeline:
         chunk_size: int = 800,
         chunk_overlap: int = 100,
     ) -> int:
-        """Ingest raw texts into Milvus with dense + BM25 sparse vectors."""
-        all_chunks = []
-        for text, source in zip(texts, sources):
-            chunks = self._chunk_text(text, chunk_size, chunk_overlap)
-            for c in chunks:
-                all_chunks.append({"text": c, "source": source})
+        total_bytes = sum(len(t) for t in texts)
+        print(f"[Ingest] persona={persona_id}, docs={len(texts)}, corpus_bytes={total_bytes}")
 
-        if not all_chunks:
+        # ── Pass 0: Chunk with llama-index SentenceSplitter ─────────────
+        splitter = SentenceSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+
+        all_nodes = []
+        for text, source in zip(texts, sources):
+            doc = LlamaDocument(text=text, metadata={"source": source})
+            nodes = splitter.get_nodes_from_documents([doc])
+            all_nodes.extend(nodes)
+            if len(all_nodes) > MAX_CHUNKS_PER_INGEST:
+                raise ValueError(
+                    f"Too many chunks ({len(all_nodes)}). "
+                    f"Reduce document size or split into multiple ingests."
+                )
+
+        if not all_nodes:
             return 0
 
-        chunk_texts = [c["text"] for c in all_chunks]
+        print(f"[Ingest] {len(all_nodes)} chunks, total_chars={sum(len(n.text) for n in all_nodes)}")
 
-        # Dense embeddings
-        embeddings = await embedding_provider.embed(chunk_texts)
-
-        # BM25 sparse vectors — fit on all chunk texts, then encode
-        milvus_store.fit_bm25(chunk_texts)
-        sparse_vecs = milvus_store.encode_sparse(chunk_texts)
-
-        for i in range(len(all_chunks)):
-            all_chunks[i]["embedding"] = embeddings[i]
-            if i < len(sparse_vecs):
-                all_chunks[i]["sparse_vec"] = sparse_vecs[i]
-
-        milvus_store.delete_collection(persona_id)
         dim = await self._get_dim()
+        print(f"[Ingest] dim={dim}, creating collection...")
+        milvus_store.delete_collection(persona_id)
         milvus_store.create_collection(persona_id, dim=dim)
-        milvus_store.insert(persona_id, all_chunks)
 
-        return len(all_chunks)
+        # ── Pass 1: Fit BM25 on all chunk texts ─────────────────────────
+        chunk_texts = [n.text for n in all_nodes]
+        print(f"[Ingest] fitting BM25 on {len(chunk_texts)} texts...")
+        milvus_store.fit_bm25(chunk_texts)
+        del chunk_texts
 
-    async def search(
-        self,
-        persona_id: str,
-        query: str,
-        top_k: int = 5,
-    ) -> list[dict]:
-        """Hybrid search: dense + BM25. Falls back to pure dense if sparse unavailable."""
+        # ── Pass 2: Embed + insert in batches ───────────────────────────
+        total = 0
+        for i in range(0, len(all_nodes), BATCH_SIZE):
+            batch_nodes = all_nodes[i : i + BATCH_SIZE]
+            batch_texts = [n.text for n in batch_nodes]
+
+            embeddings = await embedding_provider.embed(batch_texts)
+            sparse_vecs = milvus_store.encode_sparse(batch_texts)
+
+            insert_data = []
+            for j, node in enumerate(batch_nodes):
+                entry = {
+                    "text": node.text,
+                    "source": node.metadata.get("source", ""),
+                    "embedding": embeddings[j],
+                }
+                if j < len(sparse_vecs):
+                    entry["sparse_vec"] = sparse_vecs[j]
+                insert_data.append(entry)
+
+            milvus_store.insert_batch(persona_id, insert_data, start_idx=total)
+            total += len(batch_nodes)
+            print(f"[Ingest] batch: {len(batch_nodes)} chunks inserted (total={total})")
+
+        print(f"[Ingest] done: {total} chunks total")
+        return total
+
+    async def search(self, persona_id: str, query: str, top_k: int = 5) -> list[dict]:
         embedding = await embedding_provider.embed_single(query)
         if not embedding:
             return []
-
-        # Try sparse BM25 encoding for hybrid search
         try:
             sparse_vecs = milvus_store.encode_query_sparse([query])
             sparse_vec = sparse_vecs[0] if sparse_vecs else None
         except Exception:
             sparse_vec = None
-
         return milvus_store.search(
             persona_id, embedding, top_k=top_k, query_sparse_vec=sparse_vec,
         )
@@ -81,23 +100,6 @@ class IngestionPipeline:
     async def _get_dim(self) -> int:
         await embedding_provider.ensure_ready()
         return embedding_provider.dim
-
-    def _chunk_text(self, text: str, chunk_size: int = 800, chunk_overlap: int = 100) -> list[str]:
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = min(start + chunk_size, len(text))
-            if end < len(text):
-                for sep in ["\n\n", "\n", "。", ". ", "；"]:
-                    last_sep = text.rfind(sep, start, end)
-                    if last_sep > start + chunk_size // 2:
-                        end = last_sep + len(sep)
-                        break
-            chunks.append(text[start:end].strip())
-            start = end - chunk_overlap
-            if start >= len(text):
-                break
-        return [c for c in chunks if c]
 
 
 pipeline = IngestionPipeline()

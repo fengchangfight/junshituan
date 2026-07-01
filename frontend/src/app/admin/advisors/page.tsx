@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle, AlertCircle, Loader2, Circle } from "lucide-react";
+import { ArrowRight, CheckCircle, AlertCircle, Loader2, Circle, Plus, X } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 interface Advisor {
   id: string;
@@ -13,24 +13,78 @@ interface Advisor {
   title: string;
   category: string;
   era: string;
+  avatar: string;
   kb_status: string;
   kb_doc_count: number;
   is_published: boolean;
 }
 
+const CATEGORIES = ["军事家", "哲学家", "政治家", "文学家", "科学家", "企业家", "其他"];
+
 export default function AdminAdvisorsPage() {
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
-  useEffect(() => {
+  const [form, setForm] = useState({
+    id: "",
+    name: "",
+    title: "",
+    category: "其他",
+    era: "",
+    avatar: "",
+    short_bio: "",
+    style: "",
+  });
+
+  const fetchAdvisors = () => {
     const token = localStorage.getItem("junshituan_token");
     fetch(`${API_BASE}/api/admin/advisors`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
       .then(setAdvisors)
+      .catch(() => {})
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchAdvisors();
   }, []);
+
+  const handleCreate = async () => {
+    if (!form.id || !form.name || !form.title) {
+      setCreateError("ID、名称、称号为必填项");
+      return;
+    }
+    setCreating(true);
+    setCreateError("");
+    const token = localStorage.getItem("junshituan_token");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "创建失败");
+      }
+      setShowCreate(false);
+      setForm({ id: "", name: "", title: "", category: "其他", era: "", avatar: "", short_bio: "", style: "" });
+      setLoading(true);
+      fetchAdvisors();
+    } catch (e: any) {
+      setCreateError(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -64,12 +118,146 @@ export default function AdminAdvisorsPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-display text-ink-200">知识库管理</h2>
-        <p className="text-sm text-ink-500 mt-1">
-          管理每个军师的知识文档，消化后发布为可用状态
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-display text-ink-200">知识库管理</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            管理每个军师的知识文档，消化后发布为可用状态
+          </p>
+        </div>
+        <button
+          onClick={() => { setShowCreate(true); setCreateError(""); }}
+          className="flex items-center gap-2 px-4 py-2 bg-ancient-700 hover:bg-ancient-600 text-white text-sm rounded-lg transition-colors"
+        >
+          <Plus size={16} />
+          创建军师
+        </button>
       </div>
+
+      {/* Create Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-ink-900 border border-ink-700 rounded-xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-ink-100">创建新军师</h3>
+              <button onClick={() => setShowCreate(false)} className="text-ink-500 hover:text-ink-300">
+                <X size={20} />
+              </button>
+            </div>
+
+            {createError && (
+              <div className="mb-4 p-3 bg-red-900/30 border border-red-800/50 rounded-lg text-red-400 text-sm">
+                {createError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">ID (英文标识) *</label>
+                <input
+                  value={form.id}
+                  onChange={(e) => setForm({ ...form, id: e.target.value })}
+                  placeholder="例如: sun-zi"
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-ink-400 mb-1">名称 *</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="例如: 孙子"
+                    className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-ink-400 mb-1">称号 *</label>
+                  <input
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    placeholder="例如: 军事家·兵圣"
+                    className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-ink-400 mb-1">分类</label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-ancient-600"
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-ink-400 mb-1">朝代/时代</label>
+                  <input
+                    value={form.era}
+                    onChange={(e) => setForm({ ...form, era: e.target.value })}
+                    placeholder="例如: 春秋"
+                    className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">头像 URL</label>
+                <input
+                  value={form.avatar}
+                  onChange={(e) => setForm({ ...form, avatar: e.target.value })}
+                  placeholder="例如: /avatars/sun-zi.png"
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">简介</label>
+                <textarea
+                  value={form.short_bio}
+                  onChange={(e) => setForm({ ...form, short_bio: e.target.value })}
+                  rows={2}
+                  placeholder="一两句话介绍这位军师..."
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">说话风格</label>
+                <textarea
+                  value={form.style}
+                  onChange={(e) => setForm({ ...form, style: e.target.value })}
+                  rows={2}
+                  placeholder="例如: 言简意赅，多用兵法比喻..."
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowCreate(false)}
+                className="flex-1 px-4 py-2 bg-ink-800 hover:bg-ink-700 text-ink-300 text-sm rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating}
+                className="flex-1 px-4 py-2 bg-ancient-700 hover:bg-ancient-600 disabled:opacity-50 text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {creating ? <Loader2 size={16} className="animate-spin" /> : null}
+                创建
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       <div className="space-y-3">
         {advisors.map((adv) => (
@@ -78,7 +266,18 @@ export default function AdminAdvisorsPage() {
               whileHover={{ scale: 1.01 }}
               className="flex items-center gap-4 p-4 rounded-xl bg-ink-900/50 border border-ink-800/50 hover:border-ancient-700/30 transition-all"
             >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-sm font-bold text-ink-200 shrink-0">
+              {adv.avatar ? (
+                <img
+                  src={adv.avatar}
+                  alt={adv.name}
+                  className="w-10 h-10 rounded-full object-cover shrink-0 bg-ink-800"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+                  }}
+                />
+              ) : null}
+              <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-sm font-bold text-ink-200 shrink-0 ${adv.avatar ? "hidden" : ""}`}>
                 {adv.name[0]}
               </div>
               <div className="flex-1 min-w-0">

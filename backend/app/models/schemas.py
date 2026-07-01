@@ -51,10 +51,25 @@ class PublishRequest(BaseModel):
     publish: bool = True
 
 
+class PersonaCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=256)
+    category: str = "其他"
+    era: str = ""
+    avatar: str = ""
+    short_bio: str = ""
+    style: str = ""
+
+
 class PersonaUpdate(BaseModel):
     name: Optional[str] = None
     title: Optional[str] = None
     category: Optional[str] = None
+    era: Optional[str] = None
+    avatar: Optional[str] = None
+    short_bio: Optional[str] = None
+    style: Optional[str] = None
     yaml_config: Optional[str] = None
 
 

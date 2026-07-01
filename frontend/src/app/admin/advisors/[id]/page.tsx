@@ -16,7 +16,7 @@ import {
   BookOpen,
 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 interface Doc {
   id: string;
@@ -36,6 +36,7 @@ interface AdvisorDetail {
   title: string;
   category: string;
   era: string;
+  avatar: string;
   short_bio: string;
   style: string;
   kb_status: string;
@@ -60,6 +61,18 @@ export default function AdvisorKBPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
 
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [metaForm, setMetaForm] = useState({
+    name: "",
+    title: "",
+    category: "",
+    era: "",
+    avatar: "",
+    short_bio: "",
+    style: "",
+  });
+
   const token = typeof window !== "undefined" ? localStorage.getItem("junshituan_token") : "";
 
   const fetchAdvisor = () => {
@@ -67,13 +80,50 @@ export default function AdvisorKBPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then(setAdvisor)
+      .then((data: AdvisorDetail) => {
+        setAdvisor(data);
+        setMetaForm({
+          name: data.name,
+          title: data.title,
+          category: data.category,
+          era: data.era || "",
+          avatar: data.avatar || "",
+          short_bio: data.short_bio || "",
+          style: data.style || "",
+        });
+      })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     fetchAdvisor();
   }, [personaId]);
+
+  const handleSaveMeta = async () => {
+    setSavingMeta(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(metaForm),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "保存失败");
+      }
+      setEditingMeta(false);
+      fetchAdvisor();
+      setSuccessMsg("信息已更新");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSavingMeta(false);
+    }
+  };
 
   const validateFilename = (name: string): boolean => {
     const ext = name.split(".").pop()?.toLowerCase() || "";
@@ -268,6 +318,112 @@ export default function AdvisorKBPage() {
           {successMsg}
         </div>
       )}
+
+      {/* Edit Metadata */}
+      <div className="mb-6 p-4 rounded-xl bg-ink-900/40 border border-ink-800/40">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            {metaForm.avatar ? (
+              <img
+                src={metaForm.avatar}
+                alt="avatar"
+                className="w-10 h-10 rounded-full object-cover bg-ink-800"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-sm font-bold text-ink-200">
+                {advisor.name[0]}
+              </div>
+            )}
+            <div>
+              <h4 className="text-sm font-bold text-ink-200">{advisor.name}</h4>
+              <p className="text-xs text-ink-500">军师信息</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditingMeta(!editingMeta); setError(""); setSuccessMsg(""); }}
+            className="text-xs text-ink-400 hover:text-ink-300 transition-colors"
+          >
+            {editingMeta ? "取消" : "编辑信息"}
+          </button>
+        </div>
+
+        {editingMeta && (
+          <div className="space-y-3 pt-3 border-t border-ink-800/50">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">名称</label>
+                <input
+                  value={metaForm.name}
+                  onChange={(e) => setMetaForm({ ...metaForm, name: e.target.value })}
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-ancient-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">称号</label>
+                <input
+                  value={metaForm.title}
+                  onChange={(e) => setMetaForm({ ...metaForm, title: e.target.value })}
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-ancient-600"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">朝代/时代</label>
+                <input
+                  value={metaForm.era}
+                  onChange={(e) => setMetaForm({ ...metaForm, era: e.target.value })}
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-ancient-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">分类</label>
+                <input
+                  value={metaForm.category}
+                  onChange={(e) => setMetaForm({ ...metaForm, category: e.target.value })}
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-ancient-600"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-ink-400 mb-1">头像 URL</label>
+              <input
+                value={metaForm.avatar}
+                onChange={(e) => setMetaForm({ ...metaForm, avatar: e.target.value })}
+                placeholder="例如: /avatars/sun-zi.png 或 https://..."
+                className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-ink-400 mb-1">简介</label>
+              <textarea
+                value={metaForm.short_bio}
+                onChange={(e) => setMetaForm({ ...metaForm, short_bio: e.target.value })}
+                rows={2}
+                className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-ink-400 mb-1">说话风格</label>
+              <textarea
+                value={metaForm.style}
+                onChange={(e) => setMetaForm({ ...metaForm, style: e.target.value })}
+                rows={2}
+                className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600 resize-none"
+              />
+            </div>
+            <button
+              onClick={handleSaveMeta}
+              disabled={savingMeta}
+              className="w-full py-2 bg-ancient-700 hover:bg-ancient-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+            >
+              {savingMeta && <Loader2 size={16} className="animate-spin" />}
+              保存修改
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
         <div className="space-y-4">

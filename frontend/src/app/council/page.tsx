@@ -203,7 +203,7 @@ function CouncilChat() {
         <div className="flex items-center gap-2">
           <a
             href="/"
-            className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"
+              className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"
           >
             <ArrowLeft size={20} className="text-ink-300" />
           </a>
@@ -296,7 +296,7 @@ function CouncilChat() {
 
       {budget && (
         <div className="px-3 py-1.5 border-b border-ink-800/30 bg-ink-900/40">
-          <div className="flex items-center gap-2 text-[10px] text-ink-500">
+          <div className="flex items-center gap-2 text-[11px] text-ink-500">
             <span>额度</span>
             <div className="flex-1 h-1.5 rounded-full bg-ink-800 overflow-hidden">
               <motion.div
@@ -368,7 +368,7 @@ function CouncilChat() {
             whileTap={{ scale: 0.9 }}
             onClick={handleSend}
             disabled={!input.trim() || loading}
-            className="w-10 h-10 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20"
+            className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20"
           >
             {loading ? (
               <motion.div

@@ -17,13 +17,21 @@ from app.services.persona_engine import get_persona_engine
 class AgentRegistry:
     """Manages active advisor agent instances."""
 
+    _MAX_AGENTS = 20
+
     def __init__(self):
         self._agents: dict[str, AdvisorAgentGraph] = {}
+        self._access_order: list[str] = []
 
     def get_or_create(self, persona_id: str) -> Optional[AdvisorAgentGraph]:
         """Get or create an agent instance for a persona."""
         if persona_id in self._agents:
+            self._bump_access(persona_id)
             return self._agents[persona_id]
+
+        if len(self._agents) >= self._MAX_AGENTS:
+            oldest = self._access_order[0]
+            self._evict(oldest)
 
         engine = get_persona_engine()
         persona = engine.get(persona_id)
@@ -55,6 +63,7 @@ class AgentRegistry:
         )
 
         self._agents[persona_id] = agent
+        self._access_order.append(persona_id)
         return agent
 
     async def ask_advisor(
@@ -77,11 +86,23 @@ class AgentRegistry:
 
     def remove(self, persona_id: str):
         """Remove an agent instance (e.g., when KB is re-ingested)."""
-        self._agents.pop(persona_id, None)
+        self._evict(persona_id)
 
     def invalidate_all(self):
         """Invalidate all agents (e.g., after global config change)."""
-        self._agents.clear()
+        for pid in list(self._agents.keys()):
+            self._evict(pid)
+
+    def _bump_access(self, persona_id: str):
+        if persona_id in self._access_order:
+            self._access_order.remove(persona_id)
+        self._access_order.append(persona_id)
+
+    def _evict(self, persona_id: str):
+        """Evict an agent and its in-memory checkpoints."""
+        self._agents.pop(persona_id, None)
+        if persona_id in self._access_order:
+            self._access_order.remove(persona_id)
 
 
 agent_registry = AgentRegistry()

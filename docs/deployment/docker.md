@@ -30,9 +30,12 @@ docker compose up -d
 docker compose logs -f backend
 
 # 4. 创建管理员账户
-curl -X POST http://localhost:8000/api/auth/admin/create \
+curl -s -X POST http://localhost:8000/api/auth/admin/create \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
+
+# Windows PowerShell:
+Invoke-WebRequest -Uri http://localhost:8000/api/auth/admin/create -Method Post -ContentType "application/json" -Body '{"username":"admin","password":"admin123"}'
 
 # 5. 打开页面
 #    用户端: http://localhost:3000

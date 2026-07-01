@@ -4,7 +4,7 @@ import "@/styles/globals.css";
 export const metadata: Metadata = {
   title: "军师团 - 虚拟历史顾问团",
   description: "与历史智者对话，汲取千年智慧",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
 };
 
 export default function RootLayout({

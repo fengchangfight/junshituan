@@ -51,7 +51,8 @@ async def main():
     args = parser.parse_args()
 
     await embedding_provider.ensure_ready()
-    print(f"Embedding backend: {'local ' + embedding_provider._dim + 'd' if hasattr(embedding_provider, '_dim') else 'OpenAI'} dim={embedding_provider.dim}")
+    backend = "local" if hasattr(embedding_provider, '_dim') and embedding_provider._dim else "OpenAI"
+    print(f"Embedding backend: {backend} dim={embedding_provider.dim}")
 
     corpus_dir = Path("data/corpus")
 

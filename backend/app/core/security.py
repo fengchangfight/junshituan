@@ -15,7 +15,8 @@ security_scheme = HTTPBearer(auto_error=False)
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # bcrypt 5.x enforces 72-byte limit; truncate to be safe
+    return pwd_context.hash(password[:72])
 
 
 def verify_password(plain: str, hashed: str) -> bool:

@@ -7,7 +7,11 @@ from typing import Optional
 
 from pymilvus import connections, Collection, CollectionSchema, FieldSchema, DataType
 from pymilvus import MilvusClient, AnnSearchRequest, WeightedRanker
-from pymilvus.model.sparse import BM25EmbeddingFunction
+
+try:
+    from pymilvus.model.sparse import BM25EmbeddingFunction
+except ImportError:
+    BM25EmbeddingFunction = None
 
 from app.core.config import settings
 
@@ -27,6 +31,7 @@ class MilvusStore:
         self._client = None
         self._initialized = False
         self._bm25_ef: Optional[BM25EmbeddingFunction] = None
+        self._loaded_collections: set[str] = set()
 
     def _lazy_init(self):
         if self._initialized:
@@ -56,21 +61,37 @@ class MilvusStore:
             self._bm25_ef.fit(corpus)
 
     def encode_sparse(self, texts: list[str]) -> list[dict]:
-        """Encode texts to sparse BM25 vectors for insertion."""
+        """Encode texts to sparse BM25 vectors for insertion.
+
+        Returns list of dicts like [{int: float, ...}, ...] suitable for
+        Milvus SPARSE_FLOAT_VECTOR field.
+        """
         if self._bm25_ef:
-            return self._bm25_ef.encode_documents(texts)
+            result = self._bm25_ef.encode_documents(texts)
+            rows = []
+            for i in range(result.shape[0]):
+                row = result[i].tocoo()
+                rows.append({int(idx): float(val) for idx, val in zip(row.col, row.data)})
+            return rows
         return [{} for _ in texts]
 
     def encode_query_sparse(self, queries: list[str]) -> list[dict]:
-        """Encode queries to sparse BM25 vectors for search."""
+        """Encode queries to sparse BM25 vectors for hybrid search."""
         if self._bm25_ef:
-            return self._bm25_ef.encode_queries(queries)
+            result = self._bm25_ef.encode_queries(queries)
+            rows = []
+            for i in range(result.shape[0]):
+                row = result[i].tocoo()
+                rows.append({int(idx): float(val) for idx, val in zip(row.col, row.data)})
+            return rows
         return [{} for _ in queries]
 
     # ── Collection management ──────────────────────────────────────────
 
     def collection_name(self, persona_id: str) -> str:
-        return f"{settings.milvus_collection_prefix}{persona_id}"
+        import re
+        safe_id = re.sub(r"[^a-zA-Z0-9_]", "_", persona_id)
+        return f"{settings.milvus_collection_prefix}{safe_id}"
 
     def create_collection(self, persona_id: str, dim: int = None) -> bool:
         self._lazy_init()
@@ -92,17 +113,17 @@ class MilvusStore:
             return False
 
     def insert(self, persona_id: str, chunks: list[dict]) -> bool:
-        """Insert chunks with both dense and sparse vectors.
+        return self.insert_batch(persona_id, chunks, start_idx=0)
 
-        Each chunk dict: {text, embedding, sparse_vec, source}
-        """
+    def insert_batch(self, persona_id: str, chunks: list[dict], start_idx: int = 0) -> bool:
+        """Insert a batch of chunks, with global index starting at start_idx."""
         self._lazy_init()
         name = self.collection_name(persona_id)
         try:
             data = []
             for i, chunk in enumerate(chunks):
                 entry = {
-                    "id": f"{persona_id}_{i}",
+                    "id": f"{persona_id}_{start_idx + i}",
                     "text": chunk["text"],
                     "embedding": chunk["embedding"],
                     "source": chunk.get("source", ""),
@@ -113,8 +134,10 @@ class MilvusStore:
             self.client.insert(collection_name=name, data=data)
             return True
         except Exception as e:
-            print(f"Milvus insert error: {e}")
-            return False
+            import traceback
+            print(f"Milvus insert_batch error: {e}")
+            traceback.print_exc()
+            raise
 
     # ── Hybrid search ──────────────────────────────────────────────────
 
@@ -168,7 +191,9 @@ class MilvusStore:
     ) -> list[dict]:
         """Weighted hybrid search via Milvus hybrid_search API."""
         col = Collection(name)
-        col.load()
+        if name not in self._loaded_collections:
+            col.load()
+            self._loaded_collections.add(name)
 
         dense_req = AnnSearchRequest(
             data=[query_embedding],
@@ -206,6 +231,7 @@ class MilvusStore:
     def delete_collection(self, persona_id: str):
         self._lazy_init()
         name = self.collection_name(persona_id)
+        self._loaded_collections.discard(name)
         try:
             self.client.drop_collection(name)
         except Exception:

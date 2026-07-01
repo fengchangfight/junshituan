@@ -99,7 +99,7 @@ export default function HomePage() {
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
-            className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm transition-all duration-300 ${
+            className={`min-h-[44px] px-4 sm:px-5 py-2.5 sm:py-2 rounded-full text-xs sm:text-sm transition-all duration-300 ${
               activeCategory === cat
                 ? "bg-ancient-600 text-white shadow-lg shadow-ancient-600/20"
                 : "bg-ink-900/50 text-ink-400 hover:text-ink-200 hover:bg-ink-800/50 border border-ink-800/30"
