@@ -4,12 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.db_models import User
-from app.models.schemas import LoginRequest, TokenOut, UserCreate, UserOut
+from app.models.schemas import LoginRequest, TokenOut, UserCreate, UserOut, ProfileUpdate
 from app.core.security import (
     hash_password,
     verify_password,
     create_access_token,
     require_admin,
+    require_user,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -30,6 +31,8 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         user_id=user.id,
         username=user.username,
         is_admin=user.is_admin,
+        avatar_url=user.avatar_url or "",
+        display_name=user.display_name or "",
     )
 
 
@@ -55,13 +58,13 @@ async def register(req: UserCreate, db: AsyncSession = Depends(get_db)):
         user_id=user.id,
         username=user.username,
         is_admin=user.is_admin,
+        avatar_url=user.avatar_url or "",
+        display_name=user.display_name or "",
     )
 
 
 @router.post("/admin/create", response_model=TokenOut)
 async def create_admin(req: UserCreate, db: AsyncSession = Depends(get_db)):
-    """Create initial admin user (no auth required if no admin exists)."""
-    # Check if any admin exists
     admin_check = await db.execute(select(User).where(User.is_admin == True))
     if admin_check.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="管理员已存在，请登录后操作")
@@ -86,4 +89,34 @@ async def create_admin(req: UserCreate, db: AsyncSession = Depends(get_db)):
         user_id=user.id,
         username=user.username,
         is_admin=user.is_admin,
+        avatar_url=user.avatar_url or "",
+        display_name=user.display_name or "",
     )
+
+
+@router.get("/me", response_model=UserOut)
+async def get_profile(user: User = Depends(require_user)):
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name or "",
+        avatar_url=user.avatar_url or "",
+        is_admin=user.is_admin,
+        created_at=user.created_at.isoformat() if user.created_at else "",
+    )
+
+
+@router.put("/profile")
+async def update_profile(
+    req: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Update display name and/or avatar (base64 data URI)."""
+    if req.display_name is not None:
+        user.display_name = req.display_name
+    if req.avatar_url is not None:
+        user.avatar_url = req.avatar_url
+    await db.commit()
+    await db.refresh(user)
+    return {"status": "ok", "avatar_url": user.avatar_url, "display_name": user.display_name}

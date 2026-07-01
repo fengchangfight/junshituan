@@ -159,6 +159,8 @@ class TokenOut(BaseModel):
     user_id: str
     username: str
     is_admin: bool
+    avatar_url: str = ""
+    display_name: str = ""
 
 
 class UserCreate(BaseModel):
@@ -171,5 +173,11 @@ class UserOut(BaseModel):
     id: str
     username: str
     display_name: str
+    avatar_url: str = ""
     is_admin: bool
     created_at: str
+
+
+class ProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None

@@ -33,7 +33,7 @@ class User(Base):
     hashed_password = Column(String(256), nullable=False)
     is_admin = Column(Boolean, default=False)
     display_name = Column(String(128), default="")
-    avatar_url = Column(String(512), default="")
+    avatar_url = Column(Text, default="")
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
