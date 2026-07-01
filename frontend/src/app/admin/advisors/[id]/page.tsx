@@ -93,6 +93,11 @@ export default function AdvisorKBPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [generatingSkill, setGeneratingSkill] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [editingSkillJson, setEditingSkillJson] = useState(false);
+  const [skillJsonText, setSkillJsonText] = useState("");
+  const [editConfig, setEditConfig] = useState<Record<string, any>>({});
   const [metaForm, setMetaForm] = useState({
     name: "",
     title: "",
@@ -392,6 +397,79 @@ export default function AdvisorKBPage() {
       setError(e.message);
     } finally {
       setGeneratingSkill(false);
+    }
+  };
+
+  const enterConfigEdit = () => {
+    if (!advisor) return;
+    setEditConfig({
+      thinking_framework: { ...(advisor.thinking_framework || {}) },
+      voice: { ...(advisor.voice || {}) },
+      core_beliefs: [...(advisor.core_beliefs || [])],
+      knowledge_domain: { ...(advisor.knowledge_domain || {}), known: [...(advisor.knowledge_domain?.known || [])], unknown: [...(advisor.knowledge_domain?.unknown || [])] },
+      canonical_works: [...(advisor.canonical_works || [])],
+    });
+    setEditingConfig(true);
+  };
+
+  const saveConfig = async () => {
+    setSavingConfig(true);
+    setError("");
+    try {
+      const body: Record<string, any> = {};
+      if (editConfig.thinking_framework) body.thinking_framework = editConfig.thinking_framework;
+      if (editConfig.voice) body.voice = editConfig.voice;
+      if (editConfig.core_beliefs) body.core_beliefs = editConfig.core_beliefs;
+      if (editConfig.knowledge_domain) body.knowledge_domain = editConfig.knowledge_domain;
+      if (editConfig.canonical_works) body.canonical_works = editConfig.canonical_works;
+
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "保存失败");
+      }
+      setEditingConfig(false);
+      setSuccessMsg("配置已保存");
+      fetchAdvisor();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const saveSkillJson = async () => {
+    setSavingConfig(true);
+    setError("");
+    try {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(skillJsonText);
+      } catch {
+        setError("JSON 格式错误，请检查语法");
+        setSavingConfig(false);
+        return;
+      }
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ skill_config: parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "保存失败");
+      }
+      setEditingSkillJson(false);
+      setSuccessMsg("Skill 已保存");
+      fetchAdvisor();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSavingConfig(false);
     }
   };
 
@@ -843,14 +921,36 @@ export default function AdvisorKBPage() {
             <div className="sticky top-0 bg-[#1a1a2e] border-b border-ink-800 px-6 py-4 flex items-center justify-between z-10">
               <div>
                 <h3 className="text-lg font-bold text-ink-100">{advisor.name} · 能力配置</h3>
-                <p className="text-xs text-ink-500 mt-0.5">思维框架 · 语言风格 · 认知操作系统</p>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  思维框架 · 语言风格 · 认知操作系统
+                  {editingConfig && <span className="text-amber-400 ml-2">编辑中</span>}
+                </p>
               </div>
-              <button
-                onClick={() => setShowConfig(false)}
-                className="p-2 rounded-lg hover:bg-ink-800 text-ink-400 hover:text-ink-200 transition-colors"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {editingConfig ? (
+                  <>
+                    <button onClick={saveConfig} disabled={savingConfig}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600/30 border border-emerald-600/50 text-emerald-400 text-xs font-medium hover:bg-emerald-600/40 disabled:opacity-50 flex items-center gap-1">
+                      {savingConfig ? <Loader2 size={12} className="animate-spin" /> : null}保存
+                    </button>
+                    <button onClick={() => setEditingConfig(false)}
+                      className="px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-400 text-xs hover:text-ink-200">
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={enterConfigEdit}
+                    className="px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-300 text-xs hover:text-ink-200 hover:border-ink-600 transition-colors">
+                    编辑配置
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowConfig(false)}
+                  className="p-2 rounded-lg hover:bg-ink-800 text-ink-400 hover:text-ink-200 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-6">
@@ -876,7 +976,18 @@ export default function AdvisorKBPage() {
 
               {/* ── 思维框架 ── */}
               <Section title="思维框架" icon="🧠">
-                {advisor.thinking_framework?.analysis ? (
+                {editingConfig ? (
+                  <div className="space-y-3">
+                    <EditField label="分析方式" value={editConfig.thinking_framework?.analysis || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, thinking_framework: { ...prev.thinking_framework, analysis: v } }))} />
+                    <EditField label="决策模式" value={editConfig.thinking_framework?.decision || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, thinking_framework: { ...prev.thinking_framework, decision: v } }))} />
+                    <EditField label="预见习惯" value={editConfig.thinking_framework?.foresight || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, thinking_framework: { ...prev.thinking_framework, foresight: v } }))} />
+                    <EditField label="方法论" value={editConfig.thinking_framework?.methodology || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, thinking_framework: { ...prev.thinking_framework, methodology: v } }))} />
+                  </div>
+                ) : advisor.thinking_framework?.analysis ? (
                   <div className="space-y-2">
                     <KV label="分析方式" value={advisor.thinking_framework.analysis} />
                     <KV label="决策模式" value={advisor.thinking_framework.decision} />
@@ -890,7 +1001,18 @@ export default function AdvisorKBPage() {
 
               {/* ── 语言风格 ── */}
               <Section title="语言风格" icon="🗣">
-                {advisor.voice?.tone ? (
+                {editingConfig ? (
+                  <div className="space-y-3">
+                    <EditField label="语气" value={editConfig.voice?.tone || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, voice: { ...prev.voice, tone: v } }))} />
+                    <EditField label="表达方式" value={editConfig.voice?.style || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, voice: { ...prev.voice, style: v } }))} />
+                    <EditField label="篇幅偏好" value={editConfig.voice?.length || "中等"}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, voice: { ...prev.voice, length: v } }))} />
+                    <EditField label="开场方式" value={editConfig.voice?.opening || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, voice: { ...prev.voice, opening: v } }))} />
+                  </div>
+                ) : advisor.voice?.tone ? (
                   <div className="space-y-2">
                     <KV label="语气" value={advisor.voice.tone} />
                     <KV label="表达方式" value={advisor.voice.style} />
@@ -904,7 +1026,33 @@ export default function AdvisorKBPage() {
 
               {/* ── 核心信条 ── */}
               <Section title="核心信条" icon="📜">
-                {advisor.core_beliefs && advisor.core_beliefs.length > 0 ? (
+                {editingConfig ? (
+                  <div className="space-y-2">
+                    {(editConfig.core_beliefs || []).map((b: string, i: number) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-ancient-400 text-xs w-4">{i + 1}.</span>
+                        <input
+                          value={b}
+                          onChange={(e) => {
+                            const n = [...(editConfig.core_beliefs || [])];
+                            n[i] = e.target.value;
+                            setEditConfig(prev => ({ ...prev, core_beliefs: n }));
+                          }}
+                          className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-sm text-ink-100 focus:outline-none focus:border-ancient-600"
+                        />
+                        <button onClick={() => {
+                          const n = (editConfig.core_beliefs || []).filter((_: any, j: number) => j !== i);
+                          setEditConfig(prev => ({ ...prev, core_beliefs: n }));
+                        }} className="text-ink-600 hover:text-red-400 text-xs">✕</button>
+                      </div>
+                    ))}
+                    <button onClick={() => {
+                      setEditConfig(prev => ({ ...prev, core_beliefs: [...(prev.core_beliefs || []), ""] }));
+                    }} className="text-xs text-ancient-400 hover:text-ancient-300">
+                      + 添加信条
+                    </button>
+                  </div>
+                ) : advisor.core_beliefs && advisor.core_beliefs.length > 0 ? (
                   <ul className="space-y-1.5">
                     {advisor.core_beliefs.map((b, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-ink-200">
@@ -920,7 +1068,54 @@ export default function AdvisorKBPage() {
 
               {/* ── 知识边界 ── */}
               <Section title="知识边界" icon="🌐">
-                {advisor.knowledge_domain?.known?.length ? (
+                {editingConfig ? (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-xs text-emerald-400 font-medium block mb-1.5">擅长领域</span>
+                      <div className="space-y-1.5">
+                        {(editConfig.knowledge_domain?.known || []).map((k: string, i: number) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <input value={k} onChange={(e) => {
+                              const n = [...(editConfig.knowledge_domain?.known || [])];
+                              n[i] = e.target.value;
+                              setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, known: n } }));
+                            }} className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-sm text-ink-100 focus:outline-none focus:border-emerald-600" />
+                            <button onClick={() => {
+                              const n = (editConfig.knowledge_domain?.known || []).filter((_: any, j: number) => j !== i);
+                              setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, known: n } }));
+                            }} className="text-ink-600 hover:text-red-400 text-xs">✕</button>
+                          </div>
+                        ))}
+                        <button onClick={() => {
+                          setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, known: [...(prev.knowledge_domain?.known || []), ""] } }));
+                        }} className="text-xs text-emerald-400 hover:text-emerald-300">+ 添加</button>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-red-400 font-medium block mb-1.5">不熟悉领域</span>
+                      <div className="space-y-1.5">
+                        {(editConfig.knowledge_domain?.unknown || []).map((k: string, i: number) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <input value={k} onChange={(e) => {
+                              const n = [...(editConfig.knowledge_domain?.unknown || [])];
+                              n[i] = e.target.value;
+                              setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, unknown: n } }));
+                            }} className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-sm text-ink-100 focus:outline-none focus:border-red-600" />
+                            <button onClick={() => {
+                              const n = (editConfig.knowledge_domain?.unknown || []).filter((_: any, j: number) => j !== i);
+                              setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, unknown: n } }));
+                            }} className="text-ink-600 hover:text-red-400 text-xs">✕</button>
+                          </div>
+                        ))}
+                        <button onClick={() => {
+                          setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, unknown: [...(prev.knowledge_domain?.unknown || []), ""] } }));
+                        }} className="text-xs text-red-400 hover:text-red-300">+ 添加</button>
+                      </div>
+                    </div>
+                    <EditField label="对未知的态度" value={editConfig.knowledge_domain?.attitude_to_unknown || ""}
+                      onChange={(v) => setEditConfig(prev => ({ ...prev, knowledge_domain: { ...prev.knowledge_domain, attitude_to_unknown: v } }))} />
+                  </div>
+                ) : advisor.knowledge_domain?.known?.length ? (
                   <div className="space-y-3">
                     <div>
                       <span className="text-xs text-emerald-400 font-medium">擅长领域</span>
@@ -955,7 +1150,31 @@ export default function AdvisorKBPage() {
 
               {/* ── 代表著作 ── */}
               <Section title="代表著作" icon="📚">
-                {advisor.canonical_works && advisor.canonical_works.length > 0 ? (
+                {editingConfig ? (
+                  <div className="space-y-2">
+                    {(editConfig.canonical_works || []).map((w: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input value={w.title || ""} onChange={(e) => {
+                          const n = [...(editConfig.canonical_works || [])];
+                          n[i] = { ...n[i], title: e.target.value };
+                          setEditConfig(prev => ({ ...prev, canonical_works: n }));
+                        }} placeholder="书名/篇名" className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-sm text-ink-100 focus:outline-none focus:border-ancient-600" />
+                        <input value={w.source || ""} onChange={(e) => {
+                          const n = [...(editConfig.canonical_works || [])];
+                          n[i] = { ...n[i], source: e.target.value };
+                          setEditConfig(prev => ({ ...prev, canonical_works: n }));
+                        }} placeholder="出处" className="w-32 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-sm text-ink-100 focus:outline-none focus:border-ancient-600" />
+                        <button onClick={() => {
+                          const n = (editConfig.canonical_works || []).filter((_: any, j: number) => j !== i);
+                          setEditConfig(prev => ({ ...prev, canonical_works: n }));
+                        }} className="text-ink-600 hover:text-red-400 text-xs">✕</button>
+                      </div>
+                    ))}
+                    <button onClick={() => {
+                      setEditConfig(prev => ({ ...prev, canonical_works: [...(prev.canonical_works || []), { title: "", source: "" }] }));
+                    }} className="text-xs text-ancient-400 hover:text-ancient-300">+ 添加著作</button>
+                  </div>
+                ) : advisor.canonical_works && advisor.canonical_works.length > 0 ? (
                   <ul className="space-y-2">
                     {advisor.canonical_works.map((w, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm">
@@ -974,8 +1193,35 @@ export default function AdvisorKBPage() {
 
               {/* ── 认知操作系统 (Skill) ── */}
               <Section title="认知操作系统" icon="⚙️">
-                {advisor.skill_config ? (
-                  <div className="space-y-4">
+                {editingSkillJson ? (
+                  <div className="space-y-3">
+                    <textarea
+                      value={skillJsonText}
+                      onChange={(e) => setSkillJsonText(e.target.value)}
+                      rows={20}
+                      className="w-full bg-ink-950 border border-ink-700 rounded-xl px-4 py-3 text-xs text-ink-100 font-mono focus:outline-none focus:border-purple-600 resize-y"
+                      spellCheck={false}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={saveSkillJson} disabled={savingConfig}
+                        className="px-4 py-1.5 rounded-lg bg-purple-600/30 border border-purple-600/50 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50">
+                        {savingConfig ? <Loader2 size={12} className="animate-spin inline mr-1" /> : null}
+                        保存 JSON
+                      </button>
+                      <button onClick={() => { setEditingSkillJson(false); }}
+                        className="px-4 py-1.5 rounded-lg bg-ink-800 text-ink-400 text-xs hover:text-ink-200">
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : advisor.skill_config ? (
+                  <div>
+                    <button onClick={() => { setSkillJsonText(JSON.stringify(advisor.skill_config, null, 2)); setEditingSkillJson(true); }}
+                      className="mb-3 px-3 py-1 rounded-lg bg-ink-800 border border-ink-700 text-ink-400 text-xs hover:text-ink-200 hover:border-ink-600 transition-colors">
+                      编辑 JSON
+                    </button>
+                    <div className="space-y-4">
+                      {/* ... existing skill display ... */}
                     {advisor.skill_config.workflow?.steps && (
                       <div>
                         <span className="text-xs text-amber-400 font-medium block mb-2">回答工作流</span>
@@ -1081,6 +1327,7 @@ export default function AdvisorKBPage() {
                       </div>
                     )}
                   </div>
+                  </div>
                 ) : (
                   <EmptyHint text="尚未配置，点击上方「AI 生成认知操作系统」自动生成" />
                 )}
@@ -1140,5 +1387,19 @@ function KV({ label, value }: { label: string; value?: string }) {
 function EmptyHint({ text }: { text: string }) {
   return (
     <p className="text-xs text-ink-600 italic py-3">{text}</p>
+  );
+}
+
+function EditField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <span className="text-[10px] text-ink-500">{label}</span>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={2}
+        className="w-full mt-0.5 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-sm text-ink-100 focus:outline-none focus:border-ancient-600 resize-none"
+      />
+    </div>
   );
 }

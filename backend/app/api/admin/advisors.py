@@ -354,6 +354,8 @@ async def update_advisor(
         db_p.canonical_works = data.canonical_works
     if data.knowledge_domain is not None:
         db_p.knowledge_domain = data.knowledge_domain
+    if data.skill_config is not None:
+        db_p.skill_config = data.skill_config
     if data.yaml_config is not None:
         db_p.yaml_config = data.yaml_config
 
@@ -362,6 +364,10 @@ async def update_advisor(
 
     engine = get_persona_engine()
     engine.add_persona(Persona.from_db_row(db_p))
+
+    if db_p.skill_config:
+        from app.services.skill_engine import get_skill_engine
+        get_skill_engine().add_skill(persona_id, db_p.skill_config)
 
     return {"status": "ok"}
 

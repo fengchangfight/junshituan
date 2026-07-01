@@ -91,6 +91,7 @@ class PersonaUpdate(BaseModel):
     core_beliefs: Optional[list] = None
     canonical_works: Optional[list] = None
     knowledge_domain: Optional[dict] = None
+    skill_config: Optional[dict] = None
     yaml_config: Optional[str] = None
 
 
