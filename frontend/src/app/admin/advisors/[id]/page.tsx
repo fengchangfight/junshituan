@@ -14,6 +14,9 @@ import {
   AlertCircle,
   Loader2,
   BookOpen,
+  Eye,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -43,6 +46,26 @@ interface AdvisorDetail {
   kb_doc_count: number;
   is_published: boolean;
   documents: Doc[];
+  thinking_framework?: {
+    analysis?: string;
+    decision?: string;
+    foresight?: string;
+    methodology?: string;
+  };
+  voice?: {
+    tone?: string;
+    style?: string;
+    length?: string;
+    opening?: string;
+  };
+  core_beliefs?: string[];
+  canonical_works?: { title: string; source: string }[];
+  knowledge_domain?: {
+    known?: string[];
+    unknown?: string[];
+    attitude_to_unknown?: string;
+  };
+  skill_config?: Record<string, any>;
 }
 
 export default function AdvisorKBPage() {
@@ -67,6 +90,9 @@ export default function AdvisorKBPage() {
 
   const [editingMeta, setEditingMeta] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [generatingSkill, setGeneratingSkill] = useState(false);
   const [metaForm, setMetaForm] = useState({
     name: "",
     title: "",
@@ -80,7 +106,7 @@ export default function AdvisorKBPage() {
   const token = typeof window !== "undefined" ? localStorage.getItem("junshituan_token") : "";
 
   const fetchAdvisor = () => {
-    fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+    fetch(`${API_BASE}/api/admin/advisors/${personaId}?_=${Date.now()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -128,6 +154,33 @@ export default function AdvisorKBPage() {
     } finally {
       setSavingMeta(false);
     }
+  };
+
+  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        // Resize client-side to max 128x128
+        const MAX = 128;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
+        else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        w = Math.round(w); h = Math.round(h);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUri = canvas.toDataURL("image/jpeg", 0.75);
+        setMetaForm((prev) => ({ ...prev, avatar: dataUri }));
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const validateFilename = (name: string): boolean => {
@@ -300,6 +353,48 @@ export default function AdvisorKBPage() {
     fetchAdvisor();
   };
 
+  const handleEnrich = async () => {
+    setEnriching(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}/enrich`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "充实失败");
+      }
+      setSuccessMsg("配置已由 AI 充实完成");
+      fetchAdvisor();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const handleGenerateSkill = async () => {
+    setGeneratingSkill(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}/skill/generate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "生成失败");
+      }
+      setSuccessMsg("认知操作系统已由 AI 生成");
+      fetchAdvisor();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setGeneratingSkill(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -371,6 +466,15 @@ export default function AdvisorKBPage() {
               发布
             </motion.button>
           )}
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowConfig(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ink-800 border border-ink-700 text-ink-300 text-sm font-medium hover:bg-ink-700 transition-colors"
+          >
+            <Eye size={16} />
+            能力预览
+          </motion.button>
         </div>
       </div>
 
@@ -453,13 +557,40 @@ export default function AdvisorKBPage() {
               </div>
             </div>
             <div>
-              <label className="block text-xs text-ink-400 mb-1">头像 URL</label>
-              <input
-                value={metaForm.avatar}
-                onChange={(e) => setMetaForm({ ...metaForm, avatar: e.target.value })}
-                placeholder="例如: /avatars/sun-zi.png 或 https://..."
-                className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
-              />
+              <label className="block text-xs text-ink-400 mb-1">头像</label>
+              <div className="flex items-center gap-3">
+                {metaForm.avatar ? (
+                  <img
+                    src={metaForm.avatar}
+                    alt="avatar"
+                    className="w-12 h-12 rounded-full object-cover bg-ink-800 border border-ink-700"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-lg font-bold text-ink-200 border border-ink-700">
+                    {metaForm.name[0] || "?"}
+                  </div>
+                )}
+                <label className="flex-1 cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarFile}
+                    className="hidden"
+                  />
+                  <div className="bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-xs text-ink-400 hover:text-ink-200 hover:border-ink-600 transition-colors text-center">
+                    点击上传（自动压缩）
+                  </div>
+                </label>
+                {metaForm.avatar && (
+                  <input
+                    value={metaForm.avatar}
+                    onChange={(e) => setMetaForm({ ...metaForm, avatar: e.target.value })}
+                    placeholder="或粘贴 data:image URL"
+                    className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-xs text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
+                  />
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-xs text-ink-400 mb-1">简介</label>
@@ -701,6 +832,313 @@ export default function AdvisorKBPage() {
           )}
         </div>
       </div>
+
+      {/* ── 能力预览弹窗 ──────────────────────────────────────────── */}
+      {showConfig && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-auto bg-black/70"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConfig(false); }}
+        >
+          <div className="bg-[#1a1a2e] border border-ink-700 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-auto shadow-2xl">
+            <div className="sticky top-0 bg-[#1a1a2e] border-b border-ink-800 px-6 py-4 flex items-center justify-between z-10">
+              <div>
+                <h3 className="text-lg font-bold text-ink-100">{advisor.name} · 能力配置</h3>
+                <p className="text-xs text-ink-500 mt-0.5">思维框架 · 语言风格 · 认知操作系统</p>
+              </div>
+              <button
+                onClick={() => setShowConfig(false)}
+                className="p-2 rounded-lg hover:bg-ink-800 text-ink-400 hover:text-ink-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* ── AI 操作按钮 ── */}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleEnrich}
+                  disabled={enriching}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600/20 border border-blue-600/40 text-blue-400 text-sm font-medium hover:bg-blue-600/30 disabled:opacity-50 transition-colors"
+                >
+                  {enriching ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  AI 充实人格配置
+                </button>
+                <button
+                  onClick={handleGenerateSkill}
+                  disabled={generatingSkill}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/20 border border-purple-600/40 text-purple-400 text-sm font-medium hover:bg-purple-600/30 disabled:opacity-50 transition-colors"
+                >
+                  {generatingSkill ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                  AI 生成认知操作系统
+                </button>
+              </div>
+
+              {/* ── 思维框架 ── */}
+              <Section title="思维框架" icon="🧠">
+                {advisor.thinking_framework?.analysis ? (
+                  <div className="space-y-2">
+                    <KV label="分析方式" value={advisor.thinking_framework.analysis} />
+                    <KV label="决策模式" value={advisor.thinking_framework.decision} />
+                    <KV label="预见习惯" value={advisor.thinking_framework.foresight} />
+                    <KV label="方法论" value={advisor.thinking_framework.methodology} />
+                  </div>
+                ) : (
+                  <EmptyHint text="尚未配置，点击上方「AI 充实人格配置」自动生成" />
+                )}
+              </Section>
+
+              {/* ── 语言风格 ── */}
+              <Section title="语言风格" icon="🗣">
+                {advisor.voice?.tone ? (
+                  <div className="space-y-2">
+                    <KV label="语气" value={advisor.voice.tone} />
+                    <KV label="表达方式" value={advisor.voice.style} />
+                    <KV label="篇幅偏好" value={advisor.voice.length} />
+                    <KV label="开场方式" value={advisor.voice.opening} />
+                  </div>
+                ) : (
+                  <EmptyHint text="尚未配置" />
+                )}
+              </Section>
+
+              {/* ── 核心信条 ── */}
+              <Section title="核心信条" icon="📜">
+                {advisor.core_beliefs && advisor.core_beliefs.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {advisor.core_beliefs.map((b, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-ink-200">
+                        <span className="text-ancient-400 mt-0.5 shrink-0">▸</span>
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyHint text="尚未配置" />
+                )}
+              </Section>
+
+              {/* ── 知识边界 ── */}
+              <Section title="知识边界" icon="🌐">
+                {advisor.knowledge_domain?.known?.length ? (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-xs text-emerald-400 font-medium">擅长领域</span>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {(advisor.knowledge_domain.known || []).map((k, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-md bg-emerald-900/30 text-emerald-400 text-xs border border-emerald-800/30">
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    {advisor.knowledge_domain.unknown && advisor.knowledge_domain.unknown.length > 0 && (
+                      <div>
+                        <span className="text-xs text-red-400 font-medium">不熟悉领域</span>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {advisor.knowledge_domain.unknown.map((k, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-md bg-red-900/20 text-red-400 text-xs border border-red-800/30">
+                              {k}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {advisor.knowledge_domain.attitude_to_unknown && (
+                      <KV label="对未知的态度" value={advisor.knowledge_domain.attitude_to_unknown} />
+                    )}
+                  </div>
+                ) : (
+                  <EmptyHint text="尚未配置" />
+                )}
+              </Section>
+
+              {/* ── 代表著作 ── */}
+              <Section title="代表著作" icon="📚">
+                {advisor.canonical_works && advisor.canonical_works.length > 0 ? (
+                  <ul className="space-y-2">
+                    {advisor.canonical_works.map((w, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <span className="text-ancient-400 mt-0.5 shrink-0">▸</span>
+                        <div>
+                          <span className="text-ink-200">{w.title}</span>
+                          <span className="text-ink-600 ml-2 text-xs">{w.source}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyHint text="尚未配置" />
+                )}
+              </Section>
+
+              {/* ── 认知操作系统 (Skill) ── */}
+              <Section title="认知操作系统" icon="⚙️">
+                {advisor.skill_config ? (
+                  <div className="space-y-4">
+                    {advisor.skill_config.workflow?.steps && (
+                      <div>
+                        <span className="text-xs text-amber-400 font-medium block mb-2">回答工作流</span>
+                        <div className="space-y-1.5">
+                          {advisor.skill_config.workflow.steps.map((s: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <span className="px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 text-[10px] font-mono mt-0.5">
+                                {i + 1}
+                              </span>
+                              <div>
+                                <span className="text-ink-200 font-medium">{s.step}</span>
+                                <span className="text-ink-500 ml-2 text-xs">{s.description}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {advisor.skill_config.mental_models && advisor.skill_config.mental_models.length > 0 && (
+                      <div>
+                        <span className="text-xs text-amber-400 font-medium block mb-2">
+                          心智模型 ({advisor.skill_config.mental_models.length})
+                        </span>
+                        <div className="space-y-2">
+                          {advisor.skill_config.mental_models.map((m: any, i: number) => (
+                            <div key={i} className="p-3 rounded-xl bg-ink-900/50 border border-ink-800/50">
+                              <h5 className="text-sm font-bold text-ink-100">{m.name}</h5>
+                              <p className="text-xs text-ink-400 mt-0.5">{m.summary}</p>
+                              {m.application && (
+                                <p className="text-xs text-emerald-400 mt-1">
+                                  <span className="text-ink-600">应用：</span>{m.application}
+                                </p>
+                              )}
+                              {m.limitation && (
+                                <p className="text-xs text-red-400 mt-0.5">
+                                  <span className="text-ink-600">局限：</span>{m.limitation}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {advisor.skill_config.heuristics && advisor.skill_config.heuristics.length > 0 && (
+                      <div>
+                        <span className="text-xs text-amber-400 font-medium block mb-2">
+                          决策启发式 ({advisor.skill_config.heuristics.length})
+                        </span>
+                        <div className="space-y-1.5">
+                          {advisor.skill_config.heuristics.map((h: any, i: number) => (
+                            <div key={i} className="text-sm text-ink-200">
+                              <span className="text-ancient-400">▸ </span>
+                              <span className="font-medium">{h.name}</span>
+                              <span className="text-ink-500">：{h.trigger} → {h.action}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {advisor.skill_config.expression && (
+                      <div className="space-y-1.5">
+                        <span className="text-xs text-amber-400 font-medium block">表达 DNA</span>
+                        {advisor.skill_config.expression.tone && <KV label="语气" value={advisor.skill_config.expression.tone} />}
+                        {advisor.skill_config.expression.rhythm && <KV label="节奏" value={advisor.skill_config.expression.rhythm} />}
+                        {advisor.skill_config.expression.certainty && <KV label="确定性" value={advisor.skill_config.expression.certainty} />}
+                        {advisor.skill_config.expression.sentence_patterns && (
+                          <div>
+                            <span className="text-[10px] text-ink-500">句式</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {advisor.skill_config.expression.sentence_patterns.map((p: string, i: number) => (
+                                <code key={i} className="px-2 py-0.5 rounded bg-ink-800 text-ink-300 text-xs font-mono">
+                                  {p}
+                                </code>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {advisor.skill_config.anti_patterns && advisor.skill_config.anti_patterns.length > 0 && (
+                      <div>
+                        <span className="text-xs text-red-400 font-medium block mb-2">
+                          反例黑名单 ({advisor.skill_config.anti_patterns.length})
+                        </span>
+                        <div className="space-y-1">
+                          {advisor.skill_config.anti_patterns.map((ap: any, i: number) => (
+                            <div key={i} className="text-sm">
+                              <span className="text-red-400">❌ {ap.pattern}</span>
+                              {ap.fix && <span className="text-emerald-400 ml-2">→ ✅ {ap.fix}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {advisor.skill_config.limitations && advisor.skill_config.limitations.length > 0 && (
+                      <div>
+                        <span className="text-xs text-ink-400 font-medium block mb-2">诚实边界</span>
+                        <ul className="space-y-0.5">
+                          {advisor.skill_config.limitations.map((l: string, i: number) => (
+                            <li key={i} className="text-xs text-ink-400">· {l}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <EmptyHint text="尚未配置，点击上方「AI 生成认知操作系统」自动生成" />
+                )}
+              </Section>
+
+              {/* ── 原始 JSON ── */}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-ink-500 hover:text-ink-400 py-1">
+                  查看原始 JSON 数据
+                </summary>
+                <pre className="mt-2 p-3 rounded-xl bg-ink-950 border border-ink-800 overflow-auto max-h-80 text-ink-400 text-[11px] leading-relaxed">
+                  {JSON.stringify(
+                    {
+                      thinking_framework: advisor.thinking_framework,
+                      voice: advisor.voice,
+                      core_beliefs: advisor.core_beliefs,
+                      canonical_works: advisor.canonical_works,
+                      knowledge_domain: advisor.knowledge_domain,
+                      skill_config: advisor.skill_config,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ── 辅助组件 ── */
+
+function Section({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+  return (
+    <div className="p-4 rounded-xl bg-ink-900/40 border border-ink-800/50">
+      <h4 className="text-sm font-bold text-ink-200 mb-3 flex items-center gap-2">
+        <span>{icon}</span> {title}
+      </h4>
+      {children}
+    </div>
+  );
+}
+
+function KV({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div>
+      <span className="text-[10px] text-ink-500">{label}</span>
+      <p className="text-sm text-ink-200 mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return (
+    <p className="text-xs text-ink-600 italic py-3">{text}</p>
   );
 }

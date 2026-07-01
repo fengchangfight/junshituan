@@ -18,6 +18,7 @@ from app.models.schemas import (
     PublishRequest,
     PersonaCreate,
     PersonaUpdate,
+    SmartCreateRequest,
 )
 from app.core.security import require_admin
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
@@ -130,6 +131,131 @@ async def create_advisor(
     engine.add_persona(Persona.from_db_row(db_p))
 
     return {"id": req.id, "message": "创建成功"}
+
+
+@router.post("/smart-create", status_code=201)
+async def smart_create(
+    req: SmartCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """One-click smart advisor creation: LLM generates everything from just a name."""
+    import json as _json
+    import re as _re
+    from app.core.llm_client import chat
+    from app.services.skill_engine import get_skill_engine
+
+    name = req.name.strip()
+
+    system_prompt = (
+        '你是一位精通世界历史和文化的专家。用户给你一个历史/现代名人的名字，'
+        '你需要生成一份完整的 AI 角色配置。\n\n'
+        '输出必须是严格合法的 JSON，包含以下所有字段：\n'
+        '{'
+        '"id": "英文标识（小写+连字符）",'
+        '"name": "中文名",'
+        '"title": "称号",'
+        '"category": "分类（军事家/哲学家/政治家/文学家/科学家/企业家/其他）",'
+        '"era": "时代",'
+        '"short_bio": "2-3句话简介",'
+        '"style": "说话风格描述",'
+        '"thinking_framework": {"analysis":"...","decision":"...","foresight":"...","methodology":"..."},'
+        '"voice": {"tone":"...","style":"...","length":"简短/中等/详细","opening":"..."},'
+        '"core_beliefs": ["信条1","信条2","信条3","信条4"],'
+        '"canonical_works": [{"title":"代表作","source":"出处/年份"}],'
+        '"knowledge_domain": {"known":["擅长领域"],"unknown":["不擅长领域"],"attitude_to_unknown":"态度"},'
+        '"skill_config": {'
+        '"name":"名字","version":"2.0","trigger_keywords":["触发词"],'
+        '"roleplay":{"first_person":true,"disclaimer_once":"免责声明","exit_triggers":["退出角色"]},'
+        '"workflow":{"steps":[{"step":"classify","description":"..."}],"checkpoints":[{"id":"check","questions":["自查"]}],"fallback_tree":[{"trigger":"触发","action":"行动"}]},'
+        '"mental_models":[{"name":"模型名","summary":"描述","evidence":["证据"],"application":"应用","limitation":"局限"}],'
+        '"heuristics":[{"name":"启发式","trigger":"触发","action":"行动","example":"例子"}],'
+        '"expression":{"sentence_patterns":["句式"],"tone":"语气","rhythm":"节奏","certainty":"确定性","vocabulary":{"preferred":["偏好词"],"avoided":["避免词"]}},'
+        '"anti_patterns":[{"pattern":"避免的行为","fix":"正确做法"}],'
+        '"limitations":["能力边界"]'
+        '}'
+        '}\n\n'
+        '要求：基于真实历史/学术知识填充所有字段，心智模型和启发式要体现该人物的核心思维特征，只输出JSON不要解释'
+    )
+
+    user_prompt = f'请为 {name} 生成完整的 AI 角色配置。'
+
+    try:
+        response = await chat(system_prompt, user_prompt, temperature=0.7)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM请求失败: {str(e)}")
+
+    text = response.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+        text = text.strip()
+
+    try:
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"LLM返回格式错误，请重试。原始响应: {text[:200]}")
+
+    persona_id = data.get("id", "").strip()
+    if not persona_id or not _re.match(r"^[a-zA-Z0-9_-]+$", persona_id):
+        persona_id = _re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-")) or "unknown"
+
+    # Check uniqueness
+    existing = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
+    if existing.scalar_one_or_none():
+        base = persona_id.rstrip("-0123456789")
+        cnt = 1
+        while True:
+            candidate = f"{base}-{cnt}"
+            check = await db.execute(select(PersonaDB).where(PersonaDB.id == candidate))
+            if not check.scalar_one_or_none():
+                persona_id = candidate
+                break
+            cnt += 1
+
+    db_p = PersonaDB(
+        id=persona_id,
+        name=data.get("name", name),
+        title=data.get("title", ""),
+        category=data.get("category", "其他"),
+        era=data.get("era", ""),
+        avatar="",
+        short_bio=data.get("short_bio", ""),
+        style=data.get("style", ""),
+        thinking_framework=data.get("thinking_framework", {}),
+        voice=data.get("voice", {}),
+        core_beliefs=data.get("core_beliefs", []),
+        canonical_works=data.get("canonical_works", []),
+        knowledge_domain=data.get("knowledge_domain", {}),
+        skill_config=data.get("skill_config"),
+        is_published=False,
+    )
+    db.add(db_p)
+    await db.commit()
+    await db.refresh(db_p)
+
+    engine = get_persona_engine()
+    engine.add_persona(Persona.from_db_row(db_p))
+
+    if db_p.skill_config:
+        skill_engine = get_skill_engine()
+        skill_engine.add_skill(persona_id, db_p.skill_config)
+
+    return {
+        "id": db_p.id,
+        "name": db_p.name,
+        "title": db_p.title,
+        "category": db_p.category,
+        "era": db_p.era,
+        "short_bio": db_p.short_bio,
+        "style": db_p.style,
+        "thinking_framework": db_p.thinking_framework,
+        "voice": db_p.voice,
+        "core_beliefs": db_p.core_beliefs,
+        "canonical_works": db_p.canonical_works,
+        "knowledge_domain": db_p.knowledge_domain,
+        "skill_config": db_p.skill_config,
+    }
 
 
 @router.get("/{persona_id}", response_model=AdvisorAdminOut)

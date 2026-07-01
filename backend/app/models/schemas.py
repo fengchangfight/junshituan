@@ -58,6 +58,10 @@ class PublishRequest(BaseModel):
     publish: bool = True
 
 
+class SmartCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
 class PersonaCreate(BaseModel):
     id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=64)

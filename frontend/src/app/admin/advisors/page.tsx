@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle, AlertCircle, Loader2, Circle, Plus, X } from "lucide-react";
+import { ArrowRight, CheckCircle, AlertCircle, Loader2, Circle, Plus, X, Sparkles, Zap } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -27,6 +27,11 @@ export default function AdminAdvisorsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+
+  const [showSmartCreate, setShowSmartCreate] = useState(false);
+  const [smartName, setSmartName] = useState("");
+  const [smartCreating, setSmartCreating] = useState(false);
+  const [smartError, setSmartError] = useState("");
 
   const [form, setForm] = useState({
     id: "",
@@ -86,6 +91,61 @@ export default function AdminAdvisorsPage() {
     }
   };
 
+  const handleSmartCreate = async () => {
+    if (!smartName.trim()) {
+      setSmartError("请输入军师名称");
+      return;
+    }
+    setSmartCreating(true);
+    setSmartError("");
+    const token = localStorage.getItem("junshituan_token");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/smart-create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: smartName.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "创建失败");
+      }
+      setShowSmartCreate(false);
+      setSmartName("");
+      setLoading(true);
+      fetchAdvisors();
+    } catch (e: any) {
+      setSmartError(e.message);
+    } finally {
+      setSmartCreating(false);
+    }
+  };
+
+  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 128;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
+        else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        w = Math.round(w); h = Math.round(h);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+        setForm((prev) => ({ ...prev, avatar: canvas.toDataURL("image/jpeg", 0.75) }));
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const statusIcon = (status: string) => {
     switch (status) {
       case "ready":
@@ -125,13 +185,22 @@ export default function AdminAdvisorsPage() {
             管理每个军师的知识文档，消化后发布为可用状态
           </p>
         </div>
-        <button
-          onClick={() => { setShowCreate(true); setCreateError(""); }}
-          className="flex items-center gap-2 px-4 py-2 bg-ancient-700 hover:bg-ancient-600 text-white text-sm rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          创建军师
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setShowCreate(true); setCreateError(""); }}
+            className="flex items-center gap-2 px-4 py-2 bg-ancient-700 hover:bg-ancient-600 text-white text-sm rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            手动创建
+          </button>
+          <button
+            onClick={() => { setShowSmartCreate(true); setSmartError(""); }}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-sm rounded-lg transition-all"
+          >
+            <Sparkles size={16} />
+            智能创建
+          </button>
+        </div>
       </div>
 
       {/* Create Modal */}
@@ -209,13 +278,16 @@ export default function AdminAdvisorsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-ink-400 mb-1">头像 URL</label>
-                <input
-                  value={form.avatar}
-                  onChange={(e) => setForm({ ...form, avatar: e.target.value })}
-                  placeholder="例如: /avatars/sun-zi.png"
-                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
-                />
+                <label className="block text-xs text-ink-400 mb-1">头像</label>
+                <div className="flex items-center gap-2">
+                  {form.avatar && (
+                    <img src={form.avatar} alt="preview" className="w-10 h-10 rounded-full object-cover bg-ink-800" />
+                  )}
+                  <label className="flex-1 cursor-pointer bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-xs text-ink-400 hover:text-ink-200 text-center transition-colors">
+                    <input type="file" accept="image/*" onChange={handleAvatarFile} className="hidden" />
+                    {form.avatar ? "更换头像" : "上传头像（自动压缩）"}
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="block text-xs text-ink-400 mb-1">简介</label>
@@ -253,6 +325,85 @@ export default function AdminAdvisorsPage() {
               >
                 {creating ? <Loader2 size={16} className="animate-spin" /> : null}
                 创建
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Smart Create Modal */}
+      {showSmartCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-ink-900 border border-ink-700 rounded-xl p-6 w-full max-w-md mx-4"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-ink-100 flex items-center gap-2">
+                  <Zap size={20} className="text-purple-400" />
+                  智能创建军师
+                </h3>
+                <p className="text-xs text-ink-500 mt-1">
+                  AI 会根据人物名自动补全所有配置：思维框架、语言风格、信条、认知操作系统等
+                </p>
+              </div>
+              <button onClick={() => setShowSmartCreate(false)} className="text-ink-500 hover:text-ink-300">
+                <X size={20} />
+              </button>
+            </div>
+
+            {smartError && (
+              <div className="mb-4 p-3 bg-red-900/30 border border-red-800/50 rounded-lg text-red-400 text-sm">
+                {smartError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-ink-400 mb-1">军师名称 *</label>
+                <input
+                  value={smartName}
+                  onChange={(e) => setSmartName(e.target.value)}
+                  placeholder="输入名字即可，如：黑格尔、亚里士多德、鲁迅..."
+                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-purple-600"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSmartCreate(); }}
+                  autoFocus
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-purple-900/20 border border-purple-800/30 text-xs text-purple-300 leading-relaxed">
+                <Sparkles size={14} className="inline mr-1.5" />
+                AI 将自动生成：人物身份、思维框架、核心信条、知识边界、代表著作、
+                以及完整的认知操作系统（心智模型、决策启发式、表达 DNA 等）。
+                你可以事后再补充头像、上传著作进行消化。
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowSmartCreate(false)}
+                className="flex-1 px-4 py-2 bg-ink-800 hover:bg-ink-700 text-ink-300 text-sm rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSmartCreate}
+                disabled={smartCreating}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 text-white text-sm rounded-lg transition-all flex items-center justify-center gap-2"
+              >
+                {smartCreating ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    AI 正在生成...
+                  </>
+                ) : (
+                  <>
+                    <Zap size={16} />
+                    一键生成
+                  </>
+                )}
               </button>
             </div>
           </motion.div>
