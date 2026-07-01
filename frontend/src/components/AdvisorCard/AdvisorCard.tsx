@@ -83,7 +83,15 @@ export default function AdvisorCard({
         }
         transition={{ repeat: Infinity, duration: 3 }}
       >
-        <User size={24} className="text-ink-500 sm:scale-100 scale-75" />
+        {advisor.avatar ? (
+          <img
+            src={advisor.avatar}
+            alt={advisor.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : null}
+        <User size={24} className={`text-ink-500 sm:scale-100 scale-75 ${advisor.avatar ? "hidden" : ""}`} />
       </motion.div>
 
       <h3 className="text-center text-sm sm:text-lg font-bold text-ink-100 mb-0.5 sm:mb-1 font-display">

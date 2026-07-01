@@ -59,7 +59,10 @@ docker compose up -d
 # 3. 仅启动数据库（本地开发用）
 docker compose up -d postgres milvus etcd minio
 
-# 4. 创建管理员账户
+# 4. 启动管理工具（可选）
+docker compose up -d attu
+
+# 5. 创建管理员账户
 curl -s -X POST http://localhost:8000/api/auth/admin/create \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
@@ -67,11 +70,27 @@ curl -s -X POST http://localhost:8000/api/auth/admin/create \
 # Windows PowerShell:
 iwr -Uri http://localhost:8000/api/auth/admin/create -Method Post -ContentType "application/json" -Body '{"username":"admin","password":"admin123"}'
 
-# 5. 打开前端
+# 6. 打开前端
 #    用户端: http://localhost:3000
 #    管理端: http://localhost:3000/admin/login
 #    Milvus GUI: http://localhost:8001
+#    PostgreSQL: 用 DBeaver 连接 localhost:5432 (见下方)
 ```
+
+### DBeaver 连接 PostgreSQL
+
+1. 启动 DBeaver → 新建连接 → 选择 **PostgreSQL**
+2. 填入以下信息：
+
+| 字段 | 值 |
+|------|-----|
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `junshituan` |
+| Username | `junshituan` |
+| Password | `junshituan_secret` |
+
+3. 点击「Test Connection」→ 下载驱动 → 连接成功
 
 ---
 

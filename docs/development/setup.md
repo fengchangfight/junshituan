@@ -10,7 +10,7 @@
 
 ```bash
 # 在项目根目录
-docker compose up -d postgres milvus etcd minio
+docker compose up -d postgres milvus etcd minio attu
 ```
 
 首次启动会拉取镜像，之后秒启。确认服务正常：
