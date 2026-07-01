@@ -50,6 +50,19 @@ async def list_sessions(
     return await council_service.list_sessions(db, user.id)
 
 
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Delete a council session and all its messages/checkpoints."""
+    deleted = await council_service.delete_session(db, session_id, user.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="会话不存在或无权操作")
+    return {"status": "deleted"}
+
+
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
 async def get_session_detail(
     session_id: str,

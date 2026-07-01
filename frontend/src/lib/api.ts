@@ -107,6 +107,14 @@ export async function fetchSessionDetail(
   return res.json();
 }
 
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("删除失败");
+}
+
 export async function* askCouncil(
   sessionId: string,
   question: string

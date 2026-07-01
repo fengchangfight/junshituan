@@ -45,6 +45,19 @@ class CouncilService:
     ) -> Optional[Session]:
         return await session_store.get_session(db, session_id, user_id)
 
+    async def delete_session(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        user_id: str,
+    ) -> bool:
+        """Delete a session. Returns True if deleted, False if not found or not owner."""
+        session = await session_store.get_session(db, session_id, user_id)
+        if not session:
+            return False
+        await session_store.delete_session(db, session_id)
+        return True
+
     async def list_sessions(
         self,
         db: AsyncSession,

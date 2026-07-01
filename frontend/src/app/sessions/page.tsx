@@ -4,21 +4,38 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { fetchSessions } from "@/lib/api";
+import { fetchSessions, deleteSession } from "@/lib/api";
 import { SessionDetail } from "@/lib/types";
-import { ArrowLeft, Loader2, MessageSquare, Clock, ChevronRight } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Clock, ChevronRight, Trash2 } from "lucide-react";
 
 export default function SessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSessions = () => {
     fetchSessions()
       .then(setSessions)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadSessions(); }, []);
+
+  const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (!confirm("确定删除这个议事厅？所有对话记录将被清除。")) return;
+    setDeleting(sessionId);
+    try {
+      await deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch {
+      alert("删除失败，请重试");
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -53,11 +70,13 @@ export default function SessionsPage() {
             <motion.div
               key={s.id}
               whileHover={{ scale: 1.01 }}
-              onClick={() => router.push(`/council?id=${s.id}&advisors=${s.advisor_ids.join(",")}&title=${encodeURIComponent(s.title)}&resume=1`)}
-              className="p-4 bg-ink-900/50 border border-ink-800/50 rounded-xl cursor-pointer hover:border-ancient-700/30 transition-all"
+              className="p-4 bg-ink-900/50 border border-ink-800/50 rounded-xl hover:border-ancient-700/30 transition-all group"
             >
               <div className="flex items-center justify-between">
-                <div className="min-w-0 flex-1">
+                <div
+                  className="min-w-0 flex-1 cursor-pointer"
+                  onClick={() => router.push(`/council?id=${s.id}&advisors=${s.advisor_ids.join(",")}&title=${encodeURIComponent(s.title)}&resume=1`)}
+                >
                   <h3 className="text-sm font-bold text-ink-100 truncate">
                     {s.title || "议事厅"}
                   </h3>
@@ -77,7 +96,20 @@ export default function SessionsPage() {
                     )}
                   </div>
                 </div>
-                <ChevronRight size={16} className="text-ink-600 shrink-0" />
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={(e) => handleDelete(e, s.id)}
+                    disabled={deleting === s.id}
+                    className="p-2 rounded-lg text-ink-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    {deleting === s.id ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={14} />
+                    )}
+                  </button>
+                  <ChevronRight size={16} className="text-ink-600" />
+                </div>
               </div>
             </motion.div>
           ))}
