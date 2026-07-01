@@ -7,12 +7,14 @@ import { motion } from "framer-motion";
 import { fetchSessions, deleteSession } from "@/lib/api";
 import { SessionDetail } from "@/lib/types";
 import { ArrowLeft, Loader2, MessageSquare, Clock, ChevronRight, Trash2 } from "lucide-react";
+import ConfirmModal from "@/components/ConfirmModal/ConfirmModal";
 
 export default function SessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const loadSessions = () => {
     fetchSessions()
@@ -25,15 +27,20 @@ export default function SessionsPage() {
 
   const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
-    if (!confirm("确定删除这个议事厅？所有对话记录将被清除。")) return;
-    setDeleting(sessionId);
+    setConfirmDelete(sessionId);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+    setDeleting(confirmDelete);
     try {
-      await deleteSession(sessionId);
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      await deleteSession(confirmDelete);
+      setSessions((prev) => prev.filter((s) => s.id !== confirmDelete));
     } catch {
       alert("删除失败，请重试");
     } finally {
       setDeleting(null);
+      setConfirmDelete(null);
     }
   };
 
@@ -115,6 +122,16 @@ export default function SessionsPage() {
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="删除议事厅"
+        message="确定删除这个议事厅？所有对话记录和上下文将被永久清除，不可恢复。"
+        confirmLabel="确认删除"
+        danger
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
