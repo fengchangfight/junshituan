@@ -58,6 +58,19 @@ class CouncilService:
         await session_store.delete_session(db, session_id)
         return True
 
+    async def add_advisors(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        user_id: str,
+        advisor_ids: list[str],
+    ) -> bool:
+        """Add advisors to an existing session. Returns False if not owner or not found."""
+        session = await session_store.get_session(db, session_id, user_id)
+        if not session:
+            return False
+        return await session_store.add_advisors(db, session_id, advisor_ids)
+
     async def list_sessions(
         self,
         db: AsyncSession,
@@ -124,10 +137,12 @@ class CouncilService:
         user_name: str,
         question: str,
         is_resume: bool = False,
+        target_advisor_id: str = None,
     ):
         """Ask the council a question. Yields SSE events as advisors respond.
 
-        Includes budget checking and cost tracking per session.
+        If target_advisor_id is set, only that advisor responds (serial mode).
+        Otherwise all advisors respond in parallel.
         """
         session = await self.get_session(db, session_id, user_id)
         if not session:
@@ -135,6 +150,11 @@ class CouncilService:
             return
 
         advisor_ids = session.advisor_ids or []
+        if target_advisor_id:
+            if target_advisor_id not in advisor_ids:
+                yield AskEvent(advisor_id="system", content="该军师不在议事厅中", done=True)
+                return
+            advisor_ids = [target_advisor_id]
         budget = budget_manager.get(session_id)
 
         if budget.over_budget:

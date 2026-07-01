@@ -52,6 +52,23 @@ class SessionStore:
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def add_advisors(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        advisor_ids: list[str],
+    ) -> bool:
+        """Append advisor IDs to an existing session."""
+        result = await db.execute(select(Session).where(Session.id == session_id))
+        session = result.scalar_one_or_none()
+        if not session:
+            return False
+        current = set(session.advisor_ids or [])
+        current.update(advisor_ids)
+        session.advisor_ids = list(current)
+        await db.commit()
+        return True
+
     async def list_user_sessions(
         self,
         db: AsyncSession,

@@ -115,17 +115,32 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error("删除失败");
 }
 
+export async function addAdvisorsToSession(
+  sessionId: string,
+  advisorIds: string[]
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}/advisors`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ advisor_ids: advisorIds }),
+  });
+  if (!res.ok) throw new Error("添加失败");
+}
+
 export async function* askCouncil(
   sessionId: string,
-  question: string
+  question: string,
+  targetAdvisorId?: string
 ): AsyncGenerator<{ advisorId: string; advisorName?: string; content: string; done: boolean; metadata?: Record<string, any> }> {
+  const body: Record<string, string> = { question };
+  if (targetAdvisorId) body.target_advisor_id = targetAdvisorId;
   const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}/ask`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...getAuthHeaders(),
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok || !res.body) throw new Error("Failed to ask council");

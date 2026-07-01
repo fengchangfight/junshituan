@@ -98,7 +98,7 @@ class PersonaUpdate(BaseModel):
 # ── Council / Session ──────────────────────────────────────────────────────
 
 class CreateCouncilRequest(BaseModel):
-    advisor_ids: list[str] = Field(min_length=1, max_length=5)
+    advisor_ids: list[str] = Field(min_length=1, max_length=12)
     title: str = ""
 
 
@@ -136,6 +136,11 @@ class MessageOut(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+    target_advisor_id: Optional[str] = None  # if set, only this advisor responds
+
+
+class AddAdvisorsRequest(BaseModel):
+    advisor_ids: list[str] = Field(min_length=1, max_length=12)
 
 
 class AskEvent(BaseModel):

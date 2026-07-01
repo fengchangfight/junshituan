@@ -16,7 +16,7 @@ const CATEGORY_MAP: Record<string, { label: string; icon: string }> = {
 };
 
 const STEPS = [
-  { num: 1, label: "选择军师", desc: "点击头像选择 1-5 位" },
+  { num: 1, label: "选择军师", desc: "点击头像选择 1-12 位" },
   { num: 2, label: "创建议事厅", desc: "确认后自动创建会话" },
   { num: 3, label: "开始提问", desc: "与军师团对话" },
 ];
@@ -51,7 +51,7 @@ export default function HomePage() {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else if (next.size < 5) next.add(id);
+      else if (next.size < 12) next.add(id);
       return next;
     });
   };
@@ -81,7 +81,7 @@ export default function HomePage() {
           ⚔️ 创建议事厅
         </h1>
         <p className="text-sm text-ink-400 max-w-lg mx-auto">
-          召集 1-5 位历史智者组成专属顾问团，向他们请教任何问题
+          召集 1-12 位历史智者组成专属顾问团，向他们请教任何问题
         </p>
       </motion.div>
 
@@ -127,7 +127,7 @@ export default function HomePage() {
           <p className="text-xs text-ink-500">点击军师头像开始选择</p>
         ) : (
           <p className="text-xs text-ancient-400">
-            已选 <span className="font-bold">{selected.size}</span>/5 位 · 点击下方按钮开始
+            已选 <span className="font-bold">{selected.size}</span>/12 位 · 点击下方按钮开始
           </p>
         )}
       </div>
@@ -141,7 +141,7 @@ export default function HomePage() {
               advisor={advisor}
               selected={selected.has(advisor.id)}
               onToggle={() => toggleSelect(advisor.id)}
-              disabled={!selected.has(advisor.id) && selected.size >= 5}
+              disabled={!selected.has(advisor.id) && selected.size >= 12}
             />
           ))}
         </AnimatePresence>
@@ -173,7 +173,7 @@ export default function HomePage() {
                     ) : null;
                   })}
                 </div>
-                <span className="text-xs text-ink-400">已选 {selected.size}/5</span>
+                <span className="text-xs text-ink-400">已选 {selected.size}/12</span>
               </div>
               <motion.button
                 whileHover={{ scale: 1.03 }}

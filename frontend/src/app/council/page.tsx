@@ -4,8 +4,8 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
-import { fetchAdvisors, askCouncil, fetchSessionDetail } from "@/lib/api";
-import { Send, ArrowLeft, Users, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
+import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle } from "lucide-react";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
 
 const AVATAR_COLORS = [
@@ -21,28 +21,24 @@ const AVATAR_COLORS = [
 function buildMessagesFromSession(session: SessionDetail): Message[] {
   const msgs: Message[] = [];
   if (session.messages) {
-    for (const m of session.messages) {
-      msgs.push({
-        id: m.id,
-        role: m.role as "user" | "advisor" | "system",
-        advisorId: m.advisor_id,
-        advisorName: m.advisor_name,
-        content: m.content,
-        timestamp: new Date(m.created_at).getTime(),
-        sequence: m.sequence,
-        metadata: m.metadata,
-      });
-    }
-  }
-  if (msgs.length === 0) {
-    msgs.push({
-      id: "system-welcome",
-      role: "system",
-      content: "议事厅已开启。请说出你的困惑。",
-      timestamp: Date.now(),
+    for (const m of session.messages) msgs.push({
+      id: m.id, role: m.role as "user" | "advisor" | "system",
+      advisorId: m.advisor_id, advisorName: m.advisor_name,
+      content: m.content, timestamp: new Date(m.created_at).getTime(),
+      sequence: m.sequence, metadata: m.metadata,
     });
   }
+  if (msgs.length === 0) {
+    msgs.push({ id: "system-welcome", role: "system", content: "议事厅已开启。请向军师团提问。", timestamp: Date.now() });
+  }
   return msgs;
+}
+
+function parseMention(text: string, advisors: Advisor[]): Advisor | null {
+  const match = text.match(/@(\S+)/);
+  if (!match) return null;
+  const name = match[1];
+  return advisors.find((a) => a.name.includes(name) || a.id === name) || null;
 }
 
 function CouncilChat() {
@@ -53,106 +49,82 @@ function CouncilChat() {
   const resumeParam = searchParams.get("resume") || "";
 
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
+  const [allAdvisors, setAllAdvisors] = useState<Advisor[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [thinkingIds, setThinkingIds] = useState<Set<string>>(new Set());
+  const [replyingId, setReplyingId] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetInfo | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     async function init() {
       const list = await fetchAdvisors().catch(() => []);
       const selected = list.filter((a) => advisorIdsParam.includes(a.id));
       setAdvisors(selected);
+      setAllAdvisors(list);
 
       if (resumeParam === "1" && sessionId) {
         const detail = await fetchSessionDetail(sessionId).catch(() => null);
-        if (detail && detail.messages) {
-          setMessages(buildMessagesFromSession(detail));
-        } else {
-          setMessages([
-            {
-              id: "system-welcome",
-              role: "system",
-              content: `${selected.map((a) => a.name).join("、")} 已就位，议事厅开启。`,
-              timestamp: Date.now(),
-            },
-          ]);
-        }
+        if (detail && detail.messages) setMessages(buildMessagesFromSession(detail));
+        else setMessages([{ id: "system-welcome", role: "system", content: `${selected.map((a) => a.name).join("、")} 已就位。`, timestamp: Date.now() }]);
       } else {
-        setMessages([
-          {
-            id: "system-welcome",
-            role: "system",
-            content: `${selected.map((a) => a.name).join("、")} 已就位，议事厅开启。`,
-            timestamp: Date.now(),
-          },
-        ]);
+        setMessages([{ id: "system-welcome", role: "system", content: `${selected.map((a) => a.name).join("、")} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }]);
       }
       setInitialLoading(false);
     }
     init();
   }, [sessionId]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, replyingId]);
 
+  /* ── select a random advisor ── */
+  const pickRandom = () => {
+    if (advisors.length === 0) return null;
+    return advisors[Math.floor(Math.random() * advisors.length)];
+  };
+
+  /* ── send message ── */
   const handleSend = useCallback(async () => {
     const question = input.trim();
-    if (!question || loading || !sessionId) return;
-
+    if (!question || loading || replyingId || !sessionId) return;
     setInput("");
+
+    const mentioned = parseMention(question, advisors);
+    const target = mentioned || pickRandom();
+    if (!target) return;
+
     setLoading(true);
+    setReplyingId(target.id);
 
+    const cleanQ = question.replace(/@\S+\s*/, "").trim() || question;
     const userMsg: Message = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: question,
-      timestamp: Date.now(),
+      id: `user-${Date.now()}`, role: "user",
+      content: question, timestamp: Date.now(),
     };
-    setMessages((prev) => [...prev, userMsg]);
-
-    const pendingIds = new Set<string>();
-    const pendingMsgs = advisorIdsParam.map((aid) => {
-      pendingIds.add(aid);
-      return {
-        id: `pending-${aid}`,
-        role: "advisor" as const,
-        advisorId: aid,
-        advisorName: advisors.find((a) => a.id === aid)?.name || aid,
-        content: "",
-        timestamp: Date.now(),
-        isStreaming: true,
-      };
-    });
-    setThinkingIds(pendingIds);
-    setMessages((prev) => [...prev, ...pendingMsgs]);
+    const pendingMsg: Message = {
+      id: `pending-${target.id}`, role: "advisor",
+      advisorId: target.id, advisorName: target.name,
+      content: "", timestamp: Date.now(), isStreaming: true,
+    };
+    setMessages((prev) => [...prev, userMsg, pendingMsg]);
 
     try {
-      const stream = askCouncil(sessionId, question);
+      const stream = askCouncil(sessionId, cleanQ, target.id);
       for await (const event of stream) {
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
-        }
-        if (event.done) {
-          setThinkingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(event.advisorId);
-            return next;
-          });
         }
         if (event.content || event.done) {
           setMessages((prev) =>
             prev.map((m) => {
               if (m.advisorId === event.advisorId && m.isStreaming) {
-                const newContent = m.content + (event.content || "");
                 return {
-                  ...m,
-                  content: newContent,
+                  ...m, content: m.content + (event.content || ""),
                   advisorName: event.advisorName || m.advisorName,
                   isStreaming: !event.done,
                 };
@@ -163,70 +135,116 @@ function CouncilChat() {
         }
       }
     } catch {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.isStreaming ? { ...m, content: "[回答失败，请重试]", isStreaming: false } : m
-        )
-      );
-      setThinkingIds(new Set());
+      setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, content: "[回答失败]", isStreaming: false } : m));
     } finally {
+      setReplyingId(null);
       setLoading(false);
     }
-  }, [input, loading, sessionId, advisorIdsParam, advisors]);
+  }, [input, loading, replyingId, sessionId, advisors]);
+
+  /* ── trigger specific advisor ── */
+  const handlePickAdvisor = useCallback(async (advisor: Advisor) => {
+    if (loading || replyingId || !sessionId) return;
+    setLoading(true);
+    setReplyingId(advisor.id);
+
+    const pendingMsg: Message = {
+      id: `pending-${advisor.id}`, role: "advisor",
+      advisorId: advisor.id, advisorName: advisor.name,
+      content: "（正在根据之前的讨论接话...）", timestamp: Date.now(), isStreaming: true,
+    };
+    setMessages((prev) => [...prev, pendingMsg]);
+
+    try {
+      // Remove the initial loading text when real content arrives
+      let gotContent = false;
+      const stream = askCouncil(sessionId, "请根据以上的讨论继续发言。", advisor.id);
+      for await (const event of stream) {
+        if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
+          setBudget(event.metadata.budget);
+        }
+        if (event.content || event.done) {
+          if (!gotContent && event.content) {
+            gotContent = true;
+            // Replace the placeholder text
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id === pendingMsg.id) return { ...m, content: event.content || "", isStreaming: !event.done };
+                return m;
+              })
+            );
+          } else {
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.advisorId === event.advisorId && m.isStreaming) {
+                  return {
+                    ...m, content: m.content + (event.content || ""),
+                    advisorName: event.advisorName || m.advisorName,
+                    isStreaming: !event.done,
+                  };
+                }
+                return m;
+              })
+            );
+          }
+        }
+      }
+    } catch {
+      setMessages((prev) => prev.map((m) => m.id === pendingMsg.id ? { ...m, content: "[回答失败]", isStreaming: false } : m));
+    } finally {
+      setReplyingId(null);
+      setLoading(false);
+    }
+  }, [loading, replyingId, sessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const groupName = title || advisors.map((a) => a.name).join("、") + "的议事厅";
 
+  const handleInviteAdvisors = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setInviting(true);
+    try {
+      await addAdvisorsToSession(sessionId, ids);
+      const newAdvisors = allAdvisors.filter((a) => ids.includes(a.id));
+      setAdvisors((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        return [...prev, ...newAdvisors.filter((a) => !existingIds.has(a.id))];
+      });
+      setMessages((prev) => [...prev, {
+        id: `system-invite-${Date.now()}`, role: "system",
+        content: `${newAdvisors.map((a) => a.name).join("、")} 加入了议事厅。`, timestamp: Date.now(),
+      }]);
+      setShowInvite(false);
+    } catch { alert("邀请失败"); } finally { setInviting(false); }
+  }, [sessionId, allAdvisors]);
+
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center h-[100dvh] bg-ink-950">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-          className="text-4xl"
-        >
-          ⚔️
-        </motion.div>
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }} className="text-4xl">⚔️</motion.div>
       </div>
     );
   }
+
+  const hasStreaming = messages.some((m) => m.isStreaming);
 
   return (
     <div className="flex flex-col h-[100dvh] bg-ink-950">
       {/* ── Top bar ── */}
       <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
-          <a
-            href="/"
-            className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"
-          >
-            <ArrowLeft size={20} className="text-ink-300" />
-          </a>
-
+          <a href="/" className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"><ArrowLeft size={20} className="text-ink-300" /></a>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-ink-100 truncate">{groupName}</h2>
             <p className="text-xs text-ink-500">
-              {thinkingIds.size > 0
-                ? `${advisors.find((a) => thinkingIds.has(a.id))?.name || "军师"} 正在思考...`
-                : `${advisors.length}位军师在线`}
+              {replyingId ? `${advisors.find((a) => a.id === replyingId)?.name || "军师"} 正在发言...` : `${advisors.length}位军师在线 — 输入问题开始讨论`}
             </p>
           </div>
-
-          <button
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors"
-          >
-            {showSidebar ? (
-              <PanelRightClose size={18} className="text-ink-400" />
-            ) : (
-              <PanelRightOpen size={18} className="text-ink-400" />
-            )}
+          <button onClick={() => setShowSidebar(!showSidebar)} className="w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors">
+            {showSidebar ? <PanelRightClose size={18} className="text-ink-400" /> : <PanelRightOpen size={18} className="text-ink-400" />}
           </button>
         </div>
       </div>
@@ -237,91 +255,49 @@ function CouncilChat() {
           <div className="flex items-center gap-2 text-[11px] text-ink-500">
             <span>额度</span>
             <div className="flex-1 h-1.5 rounded-full bg-ink-800 overflow-hidden">
-              <motion.div
-                className={`h-full rounded-full ${
-                  budget.over_budget ? "bg-red-500" : budget.budget_percent > 80 ? "bg-amber-500" : "bg-emerald-500"
-                }`}
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(budget.budget_percent, 100)}%` }}
-                transition={{ duration: 0.5 }}
-              />
+              <motion.div className={`h-full rounded-full ${budget.over_budget ? "bg-red-500" : budget.budget_percent > 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+                initial={{ width: 0 }} animate={{ width: `${Math.min(budget.budget_percent, 100)}%` }} transition={{ duration: 0.5 }} />
             </div>
-            <span className={budget.over_budget ? "text-red-400" : "text-ink-500"}>
-              ¥{budget.total_cost_cny.toFixed(2)} / ¥{budget.max_budget}
-            </span>
-            <span className="text-ink-600">
-              {budget.total_tokens.toLocaleString()} tokens
-            </span>
+            <span className={budget.over_budget ? "text-red-400" : "text-ink-500"}>¥{budget.total_cost_cny.toFixed(2)} / ¥{budget.max_budget}</span>
+            <span className="text-ink-600">{budget.total_tokens.toLocaleString()} tokens</span>
           </div>
         </div>
       )}
 
-      {/* ── Body: sidebar + chat ── */}
+      {/* ── Body ── */}
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Advisor sidebar ── */}
+        {/* ── Sidebar ── */}
         <AnimatePresence>
           {showSidebar && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              className="shrink-0 border-r border-ink-800/60 bg-ink-900/30 overflow-y-auto scrollbar-thin"
-            >
+            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 280, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+              className="shrink-0 border-r border-ink-800/60 bg-ink-900/30 overflow-y-auto scrollbar-thin">
               <div className="p-3">
-                <h3 className="text-xs font-bold text-ink-400 uppercase tracking-wider mb-3 px-1">
-                  <Users size={12} className="inline mr-1.5" />
-                  议事成员 ({advisors.length})
-                </h3>
+                <h3 className="text-xs font-bold text-ink-400 uppercase tracking-wider mb-3 px-1"><Users size={12} className="inline mr-1.5" />议事成员 ({advisors.length})</h3>
                 <div className="space-y-1.5">
                   {advisors.map((adv, i) => {
-                    const isThinking = thinkingIds.has(adv.id);
-                    const colorClass = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                    const isReplying = replyingId === adv.id;
                     return (
-                      <motion.div
-                        key={adv.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.08 }}
-                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-default ${
-                          isThinking ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"
-                        }`}
-                      >
-                        {/* Avatar */}
-                        {adv.avatar ? (
-                          <img
-                            src={adv.avatar}
-                            alt={adv.name}
-                            className="w-10 h-10 rounded-full object-cover bg-ink-800 shrink-0"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                          />
-                        ) : (
-                          <div
-                            className={`w-10 h-10 rounded-full bg-gradient-to-br ${colorClass} flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-lg`}
-                          >
-                            {adv.name[0]}
-                          </div>
-                        )}
-                        {/* Info */}
+                      <motion.div key={adv.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-default ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"}`}>
+                        {adv.avatar ? <img src={adv.avatar} alt={adv.name} className="w-10 h-10 rounded-full object-cover bg-ink-800 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                          : <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-lg`}>{adv.name[0]}</div>}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm font-bold text-ink-100 truncate">{adv.name}</span>
-                            {isThinking && (
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ repeat: Infinity, duration: 0.6 }}
-                                className="w-2 h-2 rounded-full bg-amber-400 shrink-0"
-                              />
-                            )}
+                            {isReplying && <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 0.6 }} className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />}
                           </div>
                           <p className="text-[11px] text-ink-500 truncate">{adv.era} · {adv.title}</p>
-                          {adv.shortBio && (
-                            <p className="text-[10px] text-ink-600 truncate mt-0.5 leading-tight">{adv.shortBio}</p>
-                          )}
                         </div>
                       </motion.div>
                     );
                   })}
                 </div>
+                {advisors.length < 12 && (
+                  <button onClick={() => setShowInvite(true)}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-ink-600 text-ink-500 hover:text-ink-300 hover:border-ink-500 text-xs transition-colors">
+                    <UserPlus size={14} /> 邀请军师加入
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
@@ -333,27 +309,35 @@ function CouncilChat() {
             <div className="px-3 py-4 space-y-1">
               <AnimatePresence>
                 {messages.map((msg, idx) => {
-                  const adv = msg.advisorId
-                    ? advisors.find((a) => a.id === msg.advisorId)
-                    : undefined;
-                  const avatarIdx = adv
-                    ? advisors.findIndex((a) => a.id === adv.id)
-                    : 0;
-
-                  const showAvatar =
-                    msg.role === "advisor" &&
-                    (!messages[idx - 1] ||
-                      messages[idx - 1].advisorId !== msg.advisorId ||
-                      messages[idx - 1].role !== "advisor");
+                  const adv = msg.advisorId ? advisors.find((a) => a.id === msg.advisorId) : undefined;
+                  const avatarIdx = adv ? advisors.findIndex((a) => a.id === adv.id) : 0;
+                  const showAvatar = msg.role === "advisor" && (!messages[idx - 1] || messages[idx - 1].advisorId !== msg.advisorId || messages[idx - 1].role !== "advisor");
+                  const isLastAdvisorMsg = msg.role === "advisor" && idx === messages.length - 1;
+                  const isDone = !msg.isStreaming && isLastAdvisorMsg;
 
                   return (
-                    <ChatBubble
-                      key={msg.id}
-                      message={msg}
-                      advisor={adv}
-                      avatarColor={AVATAR_COLORS[avatarIdx % AVATAR_COLORS.length]}
-                      showAvatar={showAvatar}
-                    />
+                    <div key={msg.id}>
+                      <ChatBubble message={msg} advisor={adv} avatarColor={AVATAR_COLORS[avatarIdx % AVATAR_COLORS.length]} showAvatar={showAvatar} />
+                      {/* ── 接话选择器 ── */}
+                      {isDone && !replyingId && !loading && (
+                        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="ml-10 mt-2 mb-3"
+                          onClick={(e) => e.stopPropagation()}>
+                          <div className="text-[11px] text-ink-500 mb-2 flex items-center gap-1"><Shuffle size={12} /> 谁能接话？</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {advisors.map((a, i) => (
+                              <button key={a.id}
+                                onClick={() => handlePickAdvisor(a)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border ${
+                                  replyingId === a.id ? "opacity-50" : "bg-ink-800/80 border-ink-700 text-ink-300 hover:border-ancient-500/50 hover:text-ink-100"
+                                }`}>
+                                {a.avatar ? <img src={a.avatar} className="w-4 h-4 rounded-full object-cover" /> : <div className={`w-4 h-4 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-[8px] font-bold`}>{a.name[0]}</div>}
+                                {a.name}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
                   );
                 })}
               </AnimatePresence>
@@ -361,61 +345,80 @@ function CouncilChat() {
             <div ref={chatEndRef} className="h-4" />
           </div>
 
-          {/* ── Input bar ── */}
-          <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-3 py-2.5 safe-area-bottom">
+          {/* ── Input ── */}
+          <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-3 py-2.5">
             <div className="flex gap-2 items-end">
               <div className="flex-1 bg-ink-800/80 border border-ink-700/40 rounded-2xl px-4 py-2.5">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="向军师团提问..."
-                  disabled={loading}
-                  className="w-full bg-transparent text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none"
-                />
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                  placeholder={hasStreaming || loading ? "军师正在发言..." : "提问，或 @军师名 指定谁回答..."}
+                  disabled={loading || !!hasStreaming}
+                  className="w-full bg-transparent text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none" />
               </div>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={handleSend}
-                disabled={!input.trim() || loading}
-                className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20"
-              >
-                {loading ? (
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                  >
-                    <Send size={16} className="text-white/70" />
-                  </motion.div>
-                ) : (
-                  <Send size={16} className="text-white" />
-                )}
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
+                onClick={handleSend} disabled={!input.trim() || loading || !!hasStreaming}
+                className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20">
+                {loading ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Send size={16} className="text-white/70" /></motion.div>
+                  : <Send size={16} className="text-white" />}
               </motion.button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── Invite modal ── */}
+      {showInvite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowInvite(false)}>
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={(e) => e.stopPropagation()}
+            className="bg-ink-900 border border-ink-700 rounded-2xl p-5 w-full max-w-md mx-4 max-h-[70vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-ink-100 flex items-center gap-2"><UserPlus size={18} className="text-ancient-400" />邀请军师加入议事厅</h3>
+              <button onClick={() => setShowInvite(false)} className="text-ink-500 hover:text-ink-300"><X size={18} /></button>
+            </div>
+            <InvitePicker allAdvisors={allAdvisors} currentIds={advisors.map((a) => a.id)} onInvite={handleInviteAdvisors} inviting={inviting} />
+          </motion.div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ── Invite picker component ── */
+function InvitePicker({ allAdvisors, currentIds, onInvite, inviting }: { allAdvisors: Advisor[]; currentIds: string[]; onInvite: (ids: string[]) => void; inviting: boolean }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const available = allAdvisors.filter((a) => !currentIds.includes(a.id));
+
+  return (
+    <>
+      {available.length === 0 ? <p className="text-sm text-ink-500 py-4 text-center">没有更多可用军师了</p> : (
+        <div className="space-y-1.5 mb-4 max-h-96 overflow-y-auto">
+          {available.map((adv, i) => {
+            const isSel = selected.has(adv.id);
+            return (
+              <motion.div key={adv.id} whileTap={{ scale: 0.98 }}
+                onClick={() => setSelected((prev) => { const next = new Set(prev); isSel ? next.delete(adv.id) : next.add(adv.id); return next; })}
+                className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${isSel ? "bg-ancient-900/30 border-ancient-600/50" : "bg-ink-900/50 border-ink-800/40 hover:border-ink-600/50"}`}>
+                {adv.avatar ? <img src={adv.avatar} className="w-9 h-9 rounded-full object-cover bg-ink-800 shrink-0" />
+                  : <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-xs font-bold shrink-0`}>{adv.name[0]}</div>}
+                <div className="min-w-0 flex-1"><div className="text-sm font-bold text-ink-100 truncate">{adv.name}</div><div className="text-[11px] text-ink-500 truncate">{adv.era} · {adv.title}</div></div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isSel ? "border-ancient-500 bg-ancient-500" : "border-ink-600"}`}>
+                  {isSel && <div className="w-2 h-2 rounded-full bg-white" />}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+      <button onClick={() => onInvite(Array.from(selected))} disabled={selected.size === 0 || inviting}
+        className="w-full py-2.5 bg-ancient-700 hover:bg-ancient-600 disabled:opacity-40 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-colors">
+        {inviting ? <><Loader2 size={14} className="animate-spin" />邀请中...</> : <><UserPlus size={14} />{selected.size > 0 ? `邀请 ${selected.size} 位军师` : "选择要邀请的军师"}</>}
+      </button>
+    </>
   );
 }
 
 export default function CouncilPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center h-screen bg-ink-950">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-            className="text-4xl"
-          >
-            ⚔️
-          </motion.div>
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="flex items-center justify-center h-screen bg-ink-950"><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }} className="text-4xl">⚔️</motion.div></div>}>
       <CouncilChat />
     </Suspense>
   );

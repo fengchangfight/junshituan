@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.db_models import User
-from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut
+from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest
 from app.core.security import require_user
 from app.services.council_service import council_service
 from app.services.persona_engine import get_persona_engine
@@ -63,6 +63,20 @@ async def delete_session(
     return {"status": "deleted"}
 
 
+@router.put("/sessions/{session_id}/advisors")
+async def add_advisors(
+    session_id: str,
+    req: AddAdvisorsRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Add advisors to an ongoing council session."""
+    ok = await council_service.add_advisors(db, session_id, user.id, req.advisor_ids)
+    if not ok:
+        raise HTTPException(status_code=404, detail="会话不存在或无权操作")
+    return {"status": "ok", "message": f"已邀请 {len(req.advisor_ids)} 位军师加入议事厅"}
+
+
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
 async def get_session_detail(
     session_id: str,
@@ -99,6 +113,7 @@ async def ask_council(
             user_name=user.display_name or user.username,
             question=req.question,
             is_resume=is_resume,
+            target_advisor_id=req.target_advisor_id,
         ):
             yield {
                 "event": "message",
