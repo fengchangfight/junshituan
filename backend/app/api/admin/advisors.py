@@ -672,7 +672,7 @@ async def ingest_knowledge(
     if req.force:
         # Drop collection and docstore for clean rebuild
         from app.services.ingestion.milvus_store import milvus_store as _ms
-        _ms.delete_collection(req.persona_id)
+        _ms.delete_persona(req.persona_id)
         docstore_path = os.path.join("data", "docstore", f"{req.persona_id}.json")
         if os.path.exists(docstore_path):
             os.remove(docstore_path)

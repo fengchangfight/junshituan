@@ -62,15 +62,15 @@ class IngestionPipelineService:
         total_bytes = sum(len(t) for t in texts)
         print(f"[Ingest] persona={persona_id}, docs={len(texts)}, corpus_bytes={total_bytes}")
 
-        # ── If docstore is empty, start fresh (drop old collection) ─────
+        # ── If docstore is empty, start fresh (delete old nodes) ─────────
         docstore = self._load_docstore(persona_id)
         if len(docstore.docs) == 0:
-            print("[Ingest] docstore empty, dropping old collection for clean start")
-            milvus_store.delete_collection(persona_id)
+            print("[Ingest] docstore empty, deleting old nodes for clean start")
+            milvus_store.delete_persona(persona_id)
 
         # ── Ensure collection exists ────────────────────────────────────
         dim = await self._get_dim()
-        milvus_store.ensure_collection(persona_id, dim=dim)
+        milvus_store.ensure_collection(dim=dim)
 
         # ── Fit BM25 on full corpus ─────────────────────────────────────
         # Use ONE splitter instance so BM25 and pipeline chunks are identical

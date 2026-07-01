@@ -1,7 +1,7 @@
 """llama-index VectorStore adapter for our Milvus hybrid-search store."""
 
 from typing import Any, List, Optional
-from pydantic import Field, PrivateAttr
+from pydantic import Field
 
 from llama_index.core.vector_stores.types import (
     BasePydanticVectorStore,
@@ -11,7 +11,7 @@ from llama_index.core.vector_stores.types import (
 )
 from llama_index.core.schema import BaseNode, TextNode
 
-from app.services.ingestion.milvus_store import milvus_store
+from app.services.ingestion.milvus_store import milvus_store, COLLECTION_NAME
 
 
 class MilvusHybridVectorStore(BasePydanticVectorStore):
@@ -45,9 +45,7 @@ class MilvusHybridVectorStore(BasePydanticVectorStore):
         if not nodes:
             return []
 
-        # Filter out empty-content nodes (SentenceSplitter may produce empty chunks)
         nodes = [n for n in nodes if n.get_content().strip()]
-
         texts = [node.get_content() for node in nodes]
         sparse_vecs = self._store.encode_sparse(texts)
 
@@ -78,13 +76,13 @@ class MilvusHybridVectorStore(BasePydanticVectorStore):
         filters: Optional[MetadataFilters] = None,
         **delete_kwargs: Any,
     ) -> None:
-        """Delete specific nodes by ID (not used by default DocstoreStrategy)."""
+        """Delete specific nodes by ID."""
         if not node_ids:
             return
-        name = self._store.collection_name(self.persona_id)
         ids_str = ", ".join(f'"{nid}"' for nid in node_ids)
+        expr = f'id in [{ids_str}]'
         try:
-            self._store.client.delete(collection_name=name, filter=f"id in [{ids_str}]")
+            self._store.client.delete(collection_name=COLLECTION_NAME, filter=expr)
         except Exception as e:
             print(f"MilvusHybridVS delete_nodes error: {e}")
 
@@ -94,7 +92,7 @@ class MilvusHybridVectorStore(BasePydanticVectorStore):
             return VectorStoreQueryResult(nodes=[], similarities=[], ids=[])
 
         results = self._store._dense_search(
-            self._store.collection_name(self.persona_id),
+            self.persona_id,
             query.query_embedding,
             top_k=query.similarity_top_k,
         )
@@ -114,8 +112,5 @@ class MilvusHybridVectorStore(BasePydanticVectorStore):
         return VectorStoreQueryResult(nodes=nodes, similarities=similarities, ids=ids)
 
     def clear(self) -> None:
-        """Drop the entire collection."""
-        self._store.delete_collection(self.persona_id)
-        self._store._loaded_collections.discard(
-            self._store.collection_name(self.persona_id)
-        )
+        """Delete all nodes for this persona."""
+        self._store.delete_persona(self.persona_id)
