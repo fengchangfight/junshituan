@@ -158,7 +158,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     user_id: str
     username: str
-    is_admin: bool
+    role: str = "user"
     avatar_url: str = ""
     display_name: str = ""
 
@@ -174,10 +174,14 @@ class UserOut(BaseModel):
     username: str
     display_name: str
     avatar_url: str = ""
-    is_admin: bool
+    role: str = "user"
     created_at: str
 
 
 class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+
+
+class RoleUpdateRequest(BaseModel):
+    role: str = Field(min_length=1, max_length=16)

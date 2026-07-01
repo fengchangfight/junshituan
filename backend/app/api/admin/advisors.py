@@ -20,7 +20,7 @@ from app.models.schemas import (
     PersonaUpdate,
     SmartCreateRequest,
 )
-from app.core.security import require_admin
+from app.core.security import require_admin, require_editor
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.agent.agent_registry import agent_registry
 from app.services.persona_engine import Persona, get_persona_engine
@@ -89,7 +89,7 @@ async def list_advisors(
 async def create_advisor(
     req: PersonaCreate,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Create a new advisor persona (DB only)."""
     import re
@@ -137,7 +137,7 @@ async def create_advisor(
 async def smart_create(
     req: SmartCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """One-click smart advisor creation: LLM generates everything from just a name."""
     import json as _json
@@ -319,7 +319,7 @@ async def update_advisor(
     persona_id: str,
     data: PersonaUpdate,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Update advisor metadata (DB only)."""
     result = await db.execute(
@@ -375,7 +375,7 @@ async def update_advisor(
 @router.post("/{persona_id}/avatar")
 async def upload_avatar(
     persona_id: str,
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Upload an avatar image: accept base64, resize to 128x128, store in DB.
 
@@ -538,7 +538,7 @@ async def upload_document(
     file_path: str = Form(""),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Upload a knowledge document (.md / .txt only).
 
@@ -595,7 +595,7 @@ async def upload_text(
     file_path: str = Form(""),
     text: str = Form(...),
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Upload knowledge as raw text input (for the admin UI textarea).
 
@@ -644,7 +644,7 @@ async def upload_text(
 async def ingest_knowledge(
     req: IngestRequest,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Ingest documents for a persona into Milvus.
 
@@ -731,7 +731,7 @@ async def ingest_knowledge(
 async def publish_advisor(
     req: PublishRequest,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Publish/unpublish an advisor for all users."""
     from datetime import datetime, timezone
@@ -766,7 +766,7 @@ async def delete_document(
     persona_id: str,
     doc_id: str,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.id == doc_id,
@@ -786,7 +786,7 @@ async def delete_document(
 async def enrich_advisor(
     persona_id: str,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Use LLM to enrich a persona's thinking framework, voice, beliefs, and knowledge domain.
 
@@ -907,7 +907,7 @@ async def enrich_advisor(
 async def generate_skill(
     persona_id: str,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    _editor=Depends(require_editor),
 ):
     """Use LLM to generate a complete cognitive skill (cognitive OS) for this persona.
 

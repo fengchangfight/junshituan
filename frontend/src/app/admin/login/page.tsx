@@ -32,7 +32,8 @@ export default function AdminLoginPage() {
       }
 
       const data = await res.json();
-      if (!data.is_admin) {
+      const allowedRoles = ["super_admin", "admin", "viewer"];
+      if (!allowedRoles.includes(data.role)) {
         throw new Error("需要管理员权限");
       }
 

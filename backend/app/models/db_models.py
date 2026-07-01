@@ -31,7 +31,8 @@ class User(Base):
     id = Column(String, primary_key=True, default=gen_id)
     username = Column(String(64), unique=True, nullable=False, index=True)
     hashed_password = Column(String(256), nullable=False)
-    is_admin = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)  # deprecated, use role
+    role = Column(String(16), default="user", nullable=False)  # super_admin | admin | viewer | user
     display_name = Column(String(128), default="")
     avatar_url = Column(Text, default="")
     created_at = Column(DateTime(timezone=True), default=utcnow)

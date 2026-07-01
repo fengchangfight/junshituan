@@ -98,6 +98,18 @@ export default function AdvisorKBPage() {
   const [editingSkillJson, setEditingSkillJson] = useState(false);
   const [skillJsonText, setSkillJsonText] = useState("");
   const [editConfig, setEditConfig] = useState<Record<string, any>>({});
+  const [role, setRole] = useState("user");
+  const isViewer = role === "viewer";
+
+  useEffect(() => {
+    const t = localStorage.getItem("junshituan_token");
+    if (t) {
+      try {
+        const p = JSON.parse(atob(t.split(".")[1]));
+        if (p.role) setRole(p.role);
+      } catch {}
+    }
+  }, []);
   const [metaForm, setMetaForm] = useState({
     name: "",
     title: "",
@@ -505,7 +517,7 @@ export default function AdvisorKBPage() {
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={() => handleIngest(false)}
-            disabled={ingesting || advisor.documents.length === 0}
+            disabled={isViewer || ingesting || advisor.documents.length === 0}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600/20 border border-amber-600/40 text-amber-400 text-sm font-medium hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {ingesting ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
@@ -516,7 +528,7 @@ export default function AdvisorKBPage() {
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={() => handleIngest(true)}
-            disabled={ingesting || advisor.documents.length === 0}
+            disabled={isViewer || ingesting || advisor.documents.length === 0}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600/10 border border-red-600/30 text-red-400 text-sm font-medium hover:bg-red-600/20 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             强制重建
@@ -527,7 +539,7 @@ export default function AdvisorKBPage() {
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => handlePublish(false)}
-              disabled={publishing}
+              disabled={isViewer || publishing}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600/20 border border-red-600/40 text-red-400 text-sm font-medium hover:bg-red-600/30 disabled:opacity-40"
             >
               取消发布
@@ -537,7 +549,7 @@ export default function AdvisorKBPage() {
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => handlePublish(true)}
-              disabled={publishing || (advisor.kb_status !== "ready" && !advisor.thinking_framework?.analysis && !advisor.skill_config)}
+              disabled={isViewer || publishing || (advisor.kb_status !== "ready" && !advisor.thinking_framework?.analysis && !advisor.skill_config)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 text-sm font-medium hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send size={16} />
@@ -588,12 +600,14 @@ export default function AdvisorKBPage() {
               <p className="text-xs text-ink-500">军师信息</p>
             </div>
           </div>
-          <button
-            onClick={() => { setEditingMeta(!editingMeta); setError(""); setSuccessMsg(""); }}
-            className="text-xs text-ink-400 hover:text-ink-300 transition-colors"
-          >
-            {editingMeta ? "取消" : "编辑信息"}
-          </button>
+            {isViewer ? null : (
+              <button
+                onClick={() => { setEditingMeta(!editingMeta); setError(""); setSuccessMsg(""); }}
+                className="text-xs text-ink-400 hover:text-ink-300 transition-colors"
+              >
+                {editingMeta ? "取消" : "编辑信息"}
+              </button>
+            )}
         </div>
 
         {editingMeta && (
@@ -703,9 +717,17 @@ export default function AdvisorKBPage() {
       <div className="grid gap-6 sm:grid-cols-2">
         <div className="space-y-4">
           <h3 className="font-bold text-ink-300 flex items-center gap-2">
-            <Upload size={18} /> 添加知识文档 (.md / .txt)
+            <Upload size={18} /> {isViewer ? "知识文档" : "添加知识文档 (.md / .txt)"}
           </h3>
 
+          {isViewer ? (
+            <div className="text-center py-8 text-ink-600">
+              <BookOpen size={32} className="mx-auto mb-2 opacity-40" />
+              <p className="text-sm">只读模式</p>
+              <p className="text-xs mt-1">你可以查看已上传的文档</p>
+            </div>
+          ) : (
+          <>
           {/* Drag-drop zone */}
           {!selectedFile ? (
             <div
@@ -801,7 +823,7 @@ export default function AdvisorKBPage() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={handleUpload}
-            disabled={uploading || !textContent.trim()}
+            disabled={uploading || !textContent.trim() || isViewer}
             className="w-full py-2.5 bg-gradient-to-r from-ancient-600 to-ancient-500 text-white rounded-xl font-medium text-sm disabled:opacity-50"
           >
             {uploading ? (
@@ -814,6 +836,8 @@ export default function AdvisorKBPage() {
               </span>
             )}
           </motion.button>
+          </>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -868,12 +892,14 @@ export default function AdvisorKBPage() {
                     )}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleDeleteDoc(doc.id)}
-                  className="p-1.5 rounded-lg hover:bg-red-900/30 text-ink-600 hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {!isViewer && (
+                  <button
+                    onClick={() => handleDeleteDoc(doc.id)}
+                    className="p-1.5 rounded-lg hover:bg-red-900/30 text-ink-600 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             ))
           )}
@@ -938,12 +964,12 @@ export default function AdvisorKBPage() {
                       取消
                     </button>
                   </>
-                ) : (
+                ) : !isViewer ? (
                   <button onClick={enterConfigEdit}
                     className="px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-300 text-xs hover:text-ink-200 hover:border-ink-600 transition-colors">
                     编辑配置
                   </button>
-                )}
+                ) : null}
                 <button
                   onClick={() => setShowConfig(false)}
                   className="p-2 rounded-lg hover:bg-ink-800 text-ink-400 hover:text-ink-200 transition-colors"
@@ -955,6 +981,7 @@ export default function AdvisorKBPage() {
 
             <div className="p-6 space-y-6">
               {/* ── AI 操作按钮 ── */}
+              {!isViewer && (
               <div className="flex gap-3">
                 <button
                   onClick={handleEnrich}
@@ -973,6 +1000,7 @@ export default function AdvisorKBPage() {
                   AI 生成认知操作系统
                 </button>
               </div>
+              )}
 
               {/* ── 思维框架 ── */}
               <Section title="思维框架" icon="🧠">
@@ -1216,10 +1244,12 @@ export default function AdvisorKBPage() {
                   </div>
                 ) : advisor.skill_config ? (
                   <div>
+                    {!isViewer && (
                     <button onClick={() => { setSkillJsonText(JSON.stringify(advisor.skill_config, null, 2)); setEditingSkillJson(true); }}
                       className="mb-3 px-3 py-1 rounded-lg bg-ink-800 border border-ink-700 text-ink-400 text-xs hover:text-ink-200 hover:border-ink-600 transition-colors">
                       编辑 JSON
                     </button>
+                    )}
                     <div className="space-y-4">
                       {/* ... existing skill display ... */}
                     {advisor.skill_config.workflow?.steps && (

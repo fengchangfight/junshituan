@@ -47,6 +47,7 @@ async def init_db():
             "ALTER TABLE personas ADD COLUMN canonical_works JSON DEFAULT '[]'",
             "ALTER TABLE personas ADD COLUMN knowledge_domain JSON DEFAULT '{}'",
             "ALTER TABLE personas ADD COLUMN skill_config JSON",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) DEFAULT 'user' NOT NULL",
             "ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT",
         ]
         for stmt in sqlite_add_columns:

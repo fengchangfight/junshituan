@@ -4,16 +4,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.db_models import User
-from app.models.schemas import LoginRequest, TokenOut, UserCreate, UserOut, ProfileUpdate
+from app.models.schemas import (
+    LoginRequest,
+    TokenOut,
+    UserCreate,
+    UserOut,
+    ProfileUpdate,
+    RoleUpdateRequest,
+)
 from app.core.security import (
     hash_password,
     verify_password,
     create_access_token,
-    require_admin,
     require_user,
+    require_super_admin,
+    ROLE_SUPER_ADMIN,
+    ROLE_USER,
+    ALL_ADMIN_ROLES,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _make_token(user: User) -> str:
+    return create_access_token(user.id, user.username, user.role)
+
+
+def _token_response(user: User, token: str) -> TokenOut:
+    return TokenOut(
+        access_token=token,
+        user_id=user.id,
+        username=user.username,
+        role=user.role,
+        avatar_url=user.avatar_url or "",
+        display_name=user.display_name or "",
+    )
 
 
 @router.post("/login", response_model=TokenOut)
@@ -25,15 +50,8 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    token = create_access_token(user.id, user.username, user.is_admin)
-    return TokenOut(
-        access_token=token,
-        user_id=user.id,
-        username=user.username,
-        is_admin=user.is_admin,
-        avatar_url=user.avatar_url or "",
-        display_name=user.display_name or "",
-    )
+    token = _make_token(user)
+    return _token_response(user, token)
 
 
 @router.post("/register", response_model=TokenOut)
@@ -46,26 +64,20 @@ async def register(req: UserCreate, db: AsyncSession = Depends(get_db)):
         username=req.username,
         hashed_password=hash_password(req.password),
         display_name=req.display_name or req.username,
-        is_admin=False,
+        role=ROLE_USER,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    token = create_access_token(user.id, user.username, user.is_admin)
-    return TokenOut(
-        access_token=token,
-        user_id=user.id,
-        username=user.username,
-        is_admin=user.is_admin,
-        avatar_url=user.avatar_url or "",
-        display_name=user.display_name or "",
-    )
+    token = _make_token(user)
+    return _token_response(user, token)
 
 
 @router.post("/admin/create", response_model=TokenOut)
 async def create_admin(req: UserCreate, db: AsyncSession = Depends(get_db)):
-    admin_check = await db.execute(select(User).where(User.is_admin == True))
+    """Bootstrap first super admin (only works if no admin exists)."""
+    admin_check = await db.execute(select(User).where(User.role.in_(ALL_ADMIN_ROLES)))
     if admin_check.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="管理员已存在，请登录后操作")
 
@@ -77,21 +89,14 @@ async def create_admin(req: UserCreate, db: AsyncSession = Depends(get_db)):
         username=req.username,
         hashed_password=hash_password(req.password),
         display_name=req.display_name or req.username,
-        is_admin=True,
+        role=ROLE_SUPER_ADMIN,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    token = create_access_token(user.id, user.username, user.is_admin)
-    return TokenOut(
-        access_token=token,
-        user_id=user.id,
-        username=user.username,
-        is_admin=user.is_admin,
-        avatar_url=user.avatar_url or "",
-        display_name=user.display_name or "",
-    )
+    token = _make_token(user)
+    return _token_response(user, token)
 
 
 @router.get("/me", response_model=UserOut)
@@ -101,7 +106,7 @@ async def get_profile(user: User = Depends(require_user)):
         username=user.username,
         display_name=user.display_name or "",
         avatar_url=user.avatar_url or "",
-        is_admin=user.is_admin,
+        role=user.role,
         created_at=user.created_at.isoformat() if user.created_at else "",
     )
 
@@ -120,3 +125,26 @@ async def update_profile(
     await db.commit()
     await db.refresh(user)
     return {"status": "ok", "avatar_url": user.avatar_url, "display_name": user.display_name}
+
+
+@router.put("/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    req: RoleUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_super_admin),
+):
+    """Super admin only: change another user's role."""
+    if req.role not in (ROLE_SUPER_ADMIN, "admin", "viewer", ROLE_USER):
+        raise HTTPException(status_code=400, detail="无效的角色")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if target.id == _super.id:
+        raise HTTPException(status_code=400, detail="不能修改自己的角色")
+
+    target.role = req.role
+    await db.commit()
+    return {"status": "ok", "user_id": user_id, "role": req.role}

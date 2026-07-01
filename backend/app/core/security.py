@@ -12,6 +12,14 @@ from app.db.database import get_db
 
 security_scheme = HTTPBearer(auto_error=False)
 
+ROLE_SUPER_ADMIN = "super_admin"
+ROLE_ADMIN = "admin"
+ROLE_VIEWER = "viewer"
+ROLE_USER = "user"
+
+EDITOR_ROLES = {ROLE_SUPER_ADMIN, ROLE_ADMIN}
+ALL_ADMIN_ROLES = {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_VIEWER}
+
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -21,12 +29,12 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
-def create_access_token(user_id: str, username: str, is_admin: bool) -> str:
+def create_access_token(user_id: str, username: str, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {
         "sub": user_id,
         "username": username,
-        "is_admin": is_admin,
+        "role": role,
         "exp": expire,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
@@ -72,7 +80,25 @@ async def require_user(
 async def require_admin(
     current_user=Depends(require_user),
 ):
-    """Require admin user. Raises 403 if not admin."""
-    if not current_user.is_admin:
+    """Require any admin role (super_admin, admin, or viewer)."""
+    if current_user.role not in ALL_ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="需要管理员权限")
+    return current_user
+
+
+async def require_editor(
+    current_user=Depends(require_user),
+):
+    """Require editor role (super_admin or admin). Viewer is NOT an editor."""
+    if current_user.role not in EDITOR_ROLES:
+        raise HTTPException(status_code=403, detail="需要编辑权限")
+    return current_user
+
+
+async def require_super_admin(
+    current_user=Depends(require_user),
+):
+    """Require super_admin role."""
+    if current_user.role != ROLE_SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="需要超级管理员权限")
     return current_user

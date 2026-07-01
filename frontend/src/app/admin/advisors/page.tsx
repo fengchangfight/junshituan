@@ -32,6 +32,8 @@ export default function AdminAdvisorsPage() {
   const [smartName, setSmartName] = useState("");
   const [smartCreating, setSmartCreating] = useState(false);
   const [smartError, setSmartError] = useState("");
+  const [role, setRole] = useState("user");
+  const isViewer = role === "viewer";
 
   const [form, setForm] = useState({
     id: "",
@@ -57,6 +59,13 @@ export default function AdminAdvisorsPage() {
 
   useEffect(() => {
     fetchAdvisors();
+    const t = localStorage.getItem("junshituan_token");
+    if (t) {
+      try {
+        const p = JSON.parse(atob(t.split(".")[1]));
+        if (p.role) setRole(p.role);
+      } catch {}
+    }
   }, []);
 
   const handleCreate = async () => {
@@ -185,6 +194,7 @@ export default function AdminAdvisorsPage() {
             管理每个军师的知识文档，消化后发布为可用状态
           </p>
         </div>
+        {!isViewer && (
         <div className="flex gap-2">
           <button
             onClick={() => { setShowCreate(true); setCreateError(""); }}
@@ -201,6 +211,7 @@ export default function AdminAdvisorsPage() {
             智能创建
           </button>
         </div>
+        )}
       </div>
 
       {/* Create Modal */}
