@@ -182,13 +182,15 @@ class MilvusStore:
         self._lazy_init()
         name = self.collection_name(persona_id)
         try:
+            if not self.client.has_collection(name):
+                return []
             self._ensure_loaded(name)
             if query_sparse_vec:
                 return self._hybrid_search(name, query_embedding, query_sparse_vec, top_k)
             else:
                 return self._dense_search(name, query_embedding, top_k)
         except Exception as e:
-            print(f"Milvus search error: {e}")
+            print(f"Milvus search error for {persona_id}: {e}")
             return []
 
     def _ensure_loaded(self, name: str):
