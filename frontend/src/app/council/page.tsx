@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail } from "@/lib/api";
-import { Send, ArrowLeft, Users, ChevronDown } from "lucide-react";
+import { Send, ArrowLeft, Users, PanelRightOpen, PanelRightClose } from "lucide-react";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
 
 const AVATAR_COLORS = [
@@ -56,7 +56,7 @@ function CouncilChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [thinkingIds, setThinkingIds] = useState<Set<string>>(new Set());
   const [budget, setBudget] = useState<BudgetInfo | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -199,101 +199,39 @@ function CouncilChat() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-ink-950">
+      {/* ── Top bar ── */}
       <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
           <a
             href="/"
-              className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"
+            className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"
           >
             <ArrowLeft size={20} className="text-ink-300" />
           </a>
 
-          <button
-            onClick={() => setShowMembers(!showMembers)}
-            className="flex-1 flex items-center gap-2.5 min-w-0"
-          >
-            <div className="flex -space-x-2 shrink-0">
-              {advisors.slice(0, 4).map((adv, i) => (
-                <div
-                  key={adv.id}
-                  className={`w-8 h-8 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} border-2 border-ink-900 flex items-center justify-center text-white text-xs font-bold`}
-                >
-                  {adv.name[0]}
-                </div>
-              ))}
-              {advisors.length > 4 && (
-                <div className="w-8 h-8 rounded-full bg-ink-700 border-2 border-ink-900 flex items-center justify-center text-ink-300 text-xs">
-                  +{advisors.length - 4}
-                </div>
-              )}
-            </div>
-            <div className="min-w-0 text-left">
-              <h2 className="text-sm font-bold text-ink-100 truncate">
-                {groupName}
-              </h2>
-              {thinkingIds.size > 0 ? (
-                <p className="text-xs text-ancient-400 animate-pulse-soft">
-                  {advisors.find((a) => thinkingIds.has(a.id))?.name || "军师"} 正在思考...
-                </p>
-              ) : (
-                <p className="text-xs text-ink-500">
-                  {advisors.length}位军师在线
-                </p>
-              )}
-            </div>
-          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-bold text-ink-100 truncate">{groupName}</h2>
+            <p className="text-xs text-ink-500">
+              {thinkingIds.size > 0
+                ? `${advisors.find((a) => thinkingIds.has(a.id))?.name || "军师"} 正在思考...`
+                : `${advisors.length}位军师在线`}
+            </p>
+          </div>
 
           <button
-            onClick={() => setShowMembers(!showMembers)}
+            onClick={() => setShowSidebar(!showSidebar)}
             className="w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors"
           >
-            <ChevronDown
-              size={18}
-              className={`text-ink-400 transition-transform duration-200 ${
-                showMembers ? "rotate-180" : ""
-              }`}
-            />
+            {showSidebar ? (
+              <PanelRightClose size={18} className="text-ink-400" />
+            ) : (
+              <PanelRightOpen size={18} className="text-ink-400" />
+            )}
           </button>
         </div>
-
-        <AnimatePresence>
-          {showMembers && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-wrap gap-2 pt-3 pb-1 px-1">
-                {advisors.map((adv, i) => (
-                  <div
-                    key={adv.id}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-ink-800/50 border border-ink-700/30"
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-[10px] font-bold`}
-                    >
-                      {adv.name[0]}
-                    </div>
-                    <span className="text-xs text-ink-200">{adv.name}</span>
-                    <span className="text-[10px] text-ink-500">
-                      {adv.era}·{adv.title}
-                    </span>
-                    {thinkingIds.has(adv.id) && (
-                      <motion.span
-                        animate={{ opacity: [0.4, 1, 0.4] }}
-                        transition={{ repeat: Infinity, duration: 0.8 }}
-                        className="w-1.5 h-1.5 rounded-full bg-ancient-400"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
+      {/* ── Budget bar ── */}
       {budget && (
         <div className="px-3 py-1.5 border-b border-ink-800/30 bg-ink-900/40">
           <div className="flex items-center gap-2 text-[11px] text-ink-500">
@@ -318,69 +256,145 @@ function CouncilChat() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin bg-ink-950">
-        <div className="px-3 py-4 space-y-1">
-          <AnimatePresence>
-            {messages.map((msg, idx) => {
-              const adv = msg.advisorId
-                ? advisors.find((a) => a.id === msg.advisorId)
-                : undefined;
-              const avatarIdx = adv
-                ? advisors.findIndex((a) => a.id === adv.id)
-                : 0;
+      {/* ── Body: sidebar + chat ── */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* ── Advisor sidebar ── */}
+        <AnimatePresence>
+          {showSidebar && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              className="shrink-0 border-r border-ink-800/60 bg-ink-900/30 overflow-y-auto scrollbar-thin"
+            >
+              <div className="p-3">
+                <h3 className="text-xs font-bold text-ink-400 uppercase tracking-wider mb-3 px-1">
+                  <Users size={12} className="inline mr-1.5" />
+                  议事成员 ({advisors.length})
+                </h3>
+                <div className="space-y-1.5">
+                  {advisors.map((adv, i) => {
+                    const isThinking = thinkingIds.has(adv.id);
+                    const colorClass = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                    return (
+                      <motion.div
+                        key={adv.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.08 }}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-default ${
+                          isThinking ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"
+                        }`}
+                      >
+                        {/* Avatar */}
+                        {adv.avatar ? (
+                          <img
+                            src={adv.avatar}
+                            alt={adv.name}
+                            className="w-10 h-10 rounded-full object-cover bg-ink-800 shrink-0"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        ) : (
+                          <div
+                            className={`w-10 h-10 rounded-full bg-gradient-to-br ${colorClass} flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-lg`}
+                          >
+                            {adv.name[0]}
+                          </div>
+                        )}
+                        {/* Info */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-bold text-ink-100 truncate">{adv.name}</span>
+                            {isThinking && (
+                              <motion.span
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{ repeat: Infinity, duration: 0.6 }}
+                                className="w-2 h-2 rounded-full bg-amber-400 shrink-0"
+                              />
+                            )}
+                          </div>
+                          <p className="text-[11px] text-ink-500 truncate">{adv.era} · {adv.title}</p>
+                          {adv.shortBio && (
+                            <p className="text-[10px] text-ink-600 truncate mt-0.5 leading-tight">{adv.shortBio}</p>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-              const showAvatar =
-                msg.role === "advisor" &&
-                (!messages[idx - 1] ||
-                  messages[idx - 1].advisorId !== msg.advisorId ||
-                  messages[idx - 1].role !== "advisor");
+        {/* ── Chat area ── */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 overflow-y-auto scrollbar-thin bg-ink-950">
+            <div className="px-3 py-4 space-y-1">
+              <AnimatePresence>
+                {messages.map((msg, idx) => {
+                  const adv = msg.advisorId
+                    ? advisors.find((a) => a.id === msg.advisorId)
+                    : undefined;
+                  const avatarIdx = adv
+                    ? advisors.findIndex((a) => a.id === adv.id)
+                    : 0;
 
-              return (
-                <ChatBubble
-                  key={msg.id}
-                  message={msg}
-                  advisor={adv}
-                  avatarColor={AVATAR_COLORS[avatarIdx % AVATAR_COLORS.length]}
-                  showAvatar={showAvatar}
-                />
-              );
-            })}
-          </AnimatePresence>
-        </div>
-        <div ref={chatEndRef} className="h-4" />
-      </div>
+                  const showAvatar =
+                    msg.role === "advisor" &&
+                    (!messages[idx - 1] ||
+                      messages[idx - 1].advisorId !== msg.advisorId ||
+                      messages[idx - 1].role !== "advisor");
 
-      <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-3 py-2.5 safe-area-bottom">
-        <div className="flex gap-2 items-end">
-          <div className="flex-1 bg-ink-800/80 border border-ink-700/40 rounded-2xl px-4 py-2.5">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="向军师团提问..."
-              disabled={loading}
-              className="w-full bg-transparent text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none"
-            />
+                  return (
+                    <ChatBubble
+                      key={msg.id}
+                      message={msg}
+                      advisor={adv}
+                      avatarColor={AVATAR_COLORS[avatarIdx % AVATAR_COLORS.length]}
+                      showAvatar={showAvatar}
+                    />
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+            <div ref={chatEndRef} className="h-4" />
           </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20"
-          >
-            {loading ? (
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+
+          {/* ── Input bar ── */}
+          <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-3 py-2.5 safe-area-bottom">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 bg-ink-800/80 border border-ink-700/40 rounded-2xl px-4 py-2.5">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="向军师团提问..."
+                  disabled={loading}
+                  className="w-full bg-transparent text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none"
+                />
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleSend}
+                disabled={!input.trim() || loading}
+                className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20"
               >
-                <Send size={16} className="text-white/70" />
-              </motion.div>
-            ) : (
-              <Send size={16} className="text-white" />
-            )}
-          </motion.button>
+                {loading ? (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                  >
+                    <Send size={16} className="text-white/70" />
+                  </motion.div>
+                ) : (
+                  <Send size={16} className="text-white" />
+                )}
+              </motion.button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
