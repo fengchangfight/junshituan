@@ -113,13 +113,22 @@ function CouncilChat() {
     };
     setMessages((prev) => [...prev, userMsg, pendingMsg]);
 
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const stream = askCouncil(sessionId, cleanQ, target.id);
+      timeout = setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
+        );
+        setReplyingId(null);
+        setLoading(false);
+      }, 120000); // 2 min timeout
       for await (const event of stream) {
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
         if (event.content || event.done) {
+          clearTimeout(timeout);
           setMessages((prev) =>
             prev.map((m) => {
               if (m.advisorId === event.advisorId && m.isStreaming) {
@@ -134,9 +143,11 @@ function CouncilChat() {
           );
         }
       }
+      clearTimeout(timeout);
     } catch {
       setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, content: "[回答失败]", isStreaming: false } : m));
     } finally {
+      clearTimeout(timeout);
       setReplyingId(null);
       setLoading(false);
     }
@@ -155,15 +166,23 @@ function CouncilChat() {
     };
     setMessages((prev) => [...prev, pendingMsg]);
 
+    let timeout2: ReturnType<typeof setTimeout> | undefined;
     try {
-      // Remove the initial loading text when real content arrives
       let gotContent = false;
-      const stream = askCouncil(sessionId, "请根据以上的讨论继续发言。", advisor.id);
+      const stream = askCouncil(sessionId, "请根据之前的讨论继续发言。", advisor.id);
+      timeout2 = setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
+        );
+        setReplyingId(null);
+        setLoading(false);
+      }, 120000);
       for await (const event of stream) {
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
         if (event.content || event.done) {
+          clearTimeout(timeout2);
           if (!gotContent && event.content) {
             gotContent = true;
             // Replace the placeholder text
@@ -189,9 +208,11 @@ function CouncilChat() {
           }
         }
       }
+      clearTimeout(timeout2);
     } catch {
       setMessages((prev) => prev.map((m) => m.id === pendingMsg.id ? { ...m, content: "[回答失败]", isStreaming: false } : m));
     } finally {
+      clearTimeout(timeout2);
       setReplyingId(null);
       setLoading(false);
     }
