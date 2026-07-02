@@ -156,7 +156,6 @@ function CouncilChat() {
             setReplyingId(event.advisor_id);
           }
           setMessages((prev) => {
-            // Create pending message lazily if not exists
             const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
             let msgs = prev;
             if (!hasPending && event.advisor_id !== "system") {
@@ -176,6 +175,22 @@ function CouncilChat() {
               }
               return m;
             });
+          });
+        } else if (event.advisor_id !== "system") {
+          // Initial ping: advisor is about to start thinking.
+          // Show yellow dot + thinking indicator immediately,
+          // instead of waiting ~10s for the first real token.
+          setReplyingId(event.advisor_id);
+          setMessages((prev) => {
+            const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
+            if (!hasPending) {
+              return [...prev, {
+                id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                advisorId: event.advisor_id, advisorName: event.advisor_name || "",
+                content: "", timestamp: Date.now(), isStreaming: true,
+              }];
+            }
+            return prev;
           });
         }
       }
