@@ -143,12 +143,12 @@ class CouncilService:
         user_name: str,
         question: str,
         is_resume: bool = False,
-        target_advisor_id: str = None,
+        target_advisor_ids: list[str] = None,
     ):
         """Ask the council a question. Yields SSE events as advisors respond.
 
-        If target_advisor_id is set, only that advisor responds (serial mode).
-        Otherwise all advisors respond in parallel.
+        If target_advisor_ids is set, only those advisors respond sequentially.
+        Each subsequent advisor sees accumulated context from prior responses.
         """
         t0 = time.perf_counter()
         print(f"[TIMING council] ask_council START session={session_id} user={user_id} question={question[:80]}", flush=True)
@@ -161,11 +161,13 @@ class CouncilService:
 
         advisor_ids = session.advisor_ids or []
         print(f"[DEBUG council] advisor_ids={advisor_ids}", flush=True)
-        if target_advisor_id:
-            if target_advisor_id not in advisor_ids:
-                yield AskEvent(advisor_id="system", content="该军师不在议事厅中", done=True)
+        if target_advisor_ids:
+            valid = [a for a in target_advisor_ids if a in advisor_ids]
+            if not valid:
+                yield AskEvent(advisor_id="system", content="指定的军师不在议事厅中", done=True)
                 return
-            advisor_ids = [target_advisor_id]
+            advisor_ids = valid
+            print(f"[DEBUG council] multi-target mode: {len(advisor_ids)} advisors", flush=True)
         budget = budget_manager.get(session_id)
 
         if budget.over_budget:
@@ -297,10 +299,21 @@ class CouncilService:
                     advisor_id=advisor_id, advisor_name="", content="", done=True,
                 ))
 
-        # Process advisors sequentially: start one, drain its events, then next
+        # Process advisors sequentially: start one, drain its events, then next.
+        # Accumulate responses so each subsequent advisor sees prior context.
+        base_question = enhanced_question
+        accumulated_context = ""
+
         for advisor_id in advisor_ids:
             t_adv = time.perf_counter()
+
+            # Build question with accumulated prior responses
+            if accumulated_context:
+                enhanced_question = f"{base_question}\n\n## 前面军师的发言（请在此基础上回应）\n{accumulated_context}"
+
             task = asyncio.create_task(ask_one(advisor_id))
+            advisor_response_text = ""
+
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=300.0)
@@ -311,8 +324,15 @@ class CouncilService:
                         content="\n[回答超时]", done=True,
                     )
                     break
+                if event.content and not event.done:
+                    advisor_response_text += event.content
                 yield event
                 if event.done:
+                    from app.services.persona_engine import get_persona_engine
+                    engine = get_persona_engine()
+                    persona = engine.get(advisor_id)
+                    advisor_name = persona.name if persona else advisor_id
+                    accumulated_context += f"[{advisor_name}]: {advisor_response_text}\n"
                     print(f"[TIMING council] advisor {advisor_id} total took {(time.perf_counter() - t_adv)*1000:.0f}ms", flush=True)
                     break
 

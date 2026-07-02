@@ -136,7 +136,7 @@ class MessageOut(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-    target_advisor_id: Optional[str] = None  # if set, only this advisor responds
+    target_advisor_ids: Optional[list[str]] = None  # if set, only these advisors respond (sequentially)
 
 
 class AddAdvisorsRequest(BaseModel):

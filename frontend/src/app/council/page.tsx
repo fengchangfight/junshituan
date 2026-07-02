@@ -44,11 +44,20 @@ function buildMessagesFromSession(session: SessionDetail): Message[] {
   return msgs;
 }
 
-function parseMention(text: string, advisors: Advisor[]): Advisor | null {
-  const match = text.match(/@(\S+)/);
-  if (!match) return null;
-  const name = match[1];
-  return advisors.find((a) => a.name.includes(name) || a.id === name) || null;
+function parseMentions(text: string, advisors: Advisor[]): Advisor[] {
+  const matches = text.match(/@(\S+)/g);
+  if (!matches) return [];
+  const seen = new Set<string>();
+  const result: Advisor[] = [];
+  for (const m of matches) {
+    const name = m.slice(1); // strip @
+    const adv = advisors.find((a) => a.name.includes(name) || a.id === name);
+    if (adv && !seen.has(adv.id)) {
+      seen.add(adv.id);
+      result.push(adv);
+    }
+  }
+  return result;
 }
 
 function CouncilChat() {
@@ -108,46 +117,56 @@ function CouncilChat() {
     if (!question || loading || replyingId || !sessionId) return;
     setInput("");
 
-    const mentioned = parseMention(question, advisors);
-    const target = mentioned || pickRandom();
-    if (!target) return;
+    const mentioned = parseMentions(question, advisors);
+    const targets = mentioned.length > 0 ? mentioned : (() => { const r = pickRandom(); return r ? [r] : []; })();
+    if (targets.length === 0) return;
 
     setLoading(true);
-    setReplyingId(target.id);
+    setReplyingId(targets[0].id);
 
-    const cleanQ = question.replace(/@\S+\s*/, "").trim() || question;
+    const cleanQ = question.replace(/@\S+\s*/g, "").trim() || question;
     const userMsg: Message = {
       id: `user-${Date.now()}`, role: "user",
       content: question, timestamp: Date.now(),
     };
-    const pendingMsg: Message = {
-      id: `pending-${target.id}`, role: "advisor",
-      advisorId: target.id, advisorName: target.name,
-      content: "", timestamp: Date.now(), isStreaming: true,
-    };
-    setMessages((prev) => [...prev, userMsg, pendingMsg]);
+    setMessages((prev) => [...prev, userMsg]);
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      console.log("[handleSend] calling askCouncil...");
-      const stream = askCouncil(sessionId, cleanQ, target.id);
+      console.log("[handleSend] calling askCouncil with", targets.length, "targets");
+      const stream = askCouncil(sessionId, cleanQ, targets.map((t) => t.id));
       timeout = setTimeout(() => {
         console.log("[handleSend] 120s TIMEOUT fired");
         setMessages((prev) =>
-          prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
+          prev.map((m) => (m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
         );
         setReplyingId(null);
         setLoading(false);
-      }, 120000); // 2 min timeout
+      }, 120000 * Math.max(targets.length, 1));
       for await (const event of stream) {
-        console.log("[handleSend] event received:", { advisorId: event.advisor_id, contentLen: event.content?.length, done: event.done, metadataType: event.metadata?.type });
+        console.log("[handleSend] event:", { advisor_id: event.advisor_id, contentLen: event.content?.length, done: event.done });
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
         if (event.content || event.done) {
           clearTimeout(timeout);
-          setMessages((prev) =>
-            prev.map((m) => {
+          if (event.done) {
+            setReplyingId((prev) => prev === event.advisor_id ? null : prev);
+          } else {
+            setReplyingId(event.advisor_id);
+          }
+          setMessages((prev) => {
+            // Create pending message lazily if not exists
+            const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
+            let msgs = prev;
+            if (!hasPending && event.advisor_id !== "system") {
+              msgs = [...prev, {
+                id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                advisorId: event.advisor_id, advisorName: event.advisor_name || "",
+                content: "", timestamp: Date.now(), isStreaming: true,
+              }];
+            }
+            return msgs.map((m) => {
               if (m.advisorId === event.advisor_id && m.isStreaming) {
                 return {
                   ...m, content: m.content + (event.content || ""),
@@ -156,8 +175,8 @@ function CouncilChat() {
                 };
               }
               return m;
-            })
-          );
+            });
+          });
         }
       }
       clearTimeout(timeout);
@@ -188,7 +207,7 @@ function CouncilChat() {
     let timeout2: ReturnType<typeof setTimeout> | undefined;
     try {
       let gotContent = false;
-      const stream = askCouncil(sessionId, "请根据之前的讨论继续发言。", advisor.id);
+      const stream = askCouncil(sessionId, "请根据之前的讨论继续发言。", [advisor.id]);
       timeout2 = setTimeout(() => {
         setMessages((prev) =>
           prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
@@ -318,7 +337,7 @@ function CouncilChat() {
                     const isReplying = replyingId === adv.id;
                     return (
                       <motion.div key={adv.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
-                        onDoubleClick={() => { setInput(`@${adv.name} `); inputRef.current?.focus(); }}
+                        onDoubleClick={() => { setInput((prev) => prev.includes(`@${adv.name}`) ? prev : `${prev}@${adv.name} `); inputRef.current?.focus(); }}
                         title={`双击 @${adv.name}`}
                         className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-pointer ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"}`}>
                         <Avatar src={adv.avatar} name={adv.name} size="lg" colorClass={AVATAR_COLORS[i % AVATAR_COLORS.length]} />

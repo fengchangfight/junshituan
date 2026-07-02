@@ -134,10 +134,10 @@ export async function addAdvisorsToSession(
 export async function* askCouncil(
   sessionId: string,
   question: string,
-  targetAdvisorId?: string
+  targetAdvisorIds?: string[]
 ): AsyncGenerator<{ advisor_id: string; advisor_name?: string; content: string; done: boolean; metadata?: Record<string, any> }> {
-  const body: Record<string, string> = { question };
-  if (targetAdvisorId) body.target_advisor_id = targetAdvisorId;
+  const body: Record<string, unknown> = { question };
+  if (targetAdvisorIds && targetAdvisorIds.length > 0) body.target_advisor_ids = targetAdvisorIds;
   const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}/ask`, {
     method: "POST",
     headers: {

@@ -113,7 +113,7 @@ async def ask_council(
             user_name=user.display_name or user.username,
             question=req.question,
             is_resume=is_resume,
-            target_advisor_id=req.target_advisor_id,
+            target_advisor_ids=req.target_advisor_ids,
         ):
             yield {
                 "event": "message",
