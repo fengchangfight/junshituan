@@ -27,6 +27,8 @@ export default function HomePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeCategory, setActiveCategory] = useState<string>("全部");
   const [loading, setLoading] = useState(false);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [customTitle, setCustomTitle] = useState("");
 
   useEffect(() => {
     fetchAdvisors()
@@ -56,14 +58,22 @@ export default function HomePage() {
     });
   };
 
-  const handleConsult = async () => {
+  const handleConsult = () => {
     if (selected.size === 0) return;
     if (!getToken()) { router.push("/login"); return; }
+    const ids = Array.from(selected);
+    const names = ids.map((id) => advisors.find((a) => a.id === id)?.name || id);
+    setCustomTitle(names.join("、") + "的议事厅");
+    setShowNameModal(true);
+  };
+
+  const handleConfirmCreate = async () => {
+    if (selected.size === 0) return;
+    setShowNameModal(false);
     setLoading(true);
     try {
       const ids = Array.from(selected);
-      const names = ids.map((id) => advisors.find((a) => a.id === id)?.name || id);
-      const title = names.join("、") + "的议事厅";
+      const title = customTitle.trim() || ids.map((id) => advisors.find((a) => a.id === id)?.name || id).join("、") + "的议事厅";
       const council = await createCouncil(ids, title);
       router.push(`/council?id=${council.id}&advisors=${ids.join(",")}&title=${encodeURIComponent(title)}`);
     } catch {
@@ -191,6 +201,43 @@ export default function HomePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Name Modal ─────────────────────────────────────────────── */}
+      {showNameModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowNameModal(false)}>
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-ink-900 border border-ink-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl"
+          >
+            <h3 className="text-base font-bold text-ink-100 mb-4">为议事厅命名</h3>
+            <input
+              type="text"
+              value={customTitle}
+              onChange={(e) => setCustomTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleConfirmCreate(); }}
+              className="w-full bg-ink-800 border border-ink-700 rounded-xl px-4 py-2.5 text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none focus:border-ancient-500/50 mb-4"
+              autoFocus
+              onFocus={(e) => e.target.select()}
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowNameModal(false)}
+                className="px-4 py-2 text-sm text-ink-400 hover:text-ink-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmCreate}
+                className="px-6 py-2 bg-ancient-600 hover:bg-ancient-500 text-white rounded-xl text-sm font-medium transition-colors"
+              >
+                确认创建
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
