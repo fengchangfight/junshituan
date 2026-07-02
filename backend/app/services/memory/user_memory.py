@@ -95,29 +95,40 @@ class UserMemoryService:
         db: AsyncSession,
         user_id: str,
         query: str,
+        session_id: str = None,
         limit: int = 5,
     ) -> list[dict]:
-        """Retrieve memories relevant to the current conversation."""
+        """Retrieve memories relevant to the current conversation.
+
+        Session-scoped: memories from the current session always rank first,
+        preventing cross-session context leaks. Cross-session memories serve
+        only as supplementary user profile.
+        """
         stmt = (
             select(UserMemory)
             .where(UserMemory.user_id == user_id)
             .order_by(UserMemory.importance.desc(), UserMemory.last_accessed.desc().nullslast())
-            .limit(limit * 2)
+            .limit(limit * 3)
         )
         result = await db.execute(stmt)
         memories = result.scalars().all()
 
-        # Simple relevance: keyword matching for now
-        # TODO: Replace with embedding-based semantic search
         query_lower = query.lower()
         scored = []
         for m in memories:
-            content_lower = m.content.lower()
+            # Base score from importance
             score = m.importance * 0.5
-            # Boost if query terms appear in memory
+
+            # Massive boost for current session memories (always top-ranked)
+            if session_id and m.source_session_id == session_id:
+                score += 100.0
+
+            # Keyword matching boost
+            content_lower = m.content.lower()
             for word in query_lower.split():
-                if word in content_lower:
+                if len(word) >= 2 and word in content_lower:
                     score += 0.1
+
             scored.append((score, m))
 
         scored.sort(key=lambda x: x[0], reverse=True)

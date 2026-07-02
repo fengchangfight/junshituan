@@ -19,15 +19,24 @@ const AVATAR_COLORS = [
   "from-rose-600 to-rose-800",
 ];
 
+// System-generated prompts that should not appear in chat history
+const SYSTEM_PROMPTS = new Set([
+  "请根据之前的讨论继续发言。",
+]);
+
 function buildMessagesFromSession(session: SessionDetail): Message[] {
   const msgs: Message[] = [];
   if (session.messages) {
-    for (const m of session.messages) msgs.push({
-      id: m.id, role: m.role as "user" | "advisor" | "system",
-      advisorId: m.advisor_id, advisorName: m.advisor_name,
-      content: m.content, timestamp: new Date(m.created_at).getTime(),
-      sequence: m.sequence, metadata: m.metadata,
-    });
+    for (const m of session.messages) {
+      // Skip system-generated prompts
+      if (m.role === "user" && SYSTEM_PROMPTS.has(m.content)) continue;
+      msgs.push({
+        id: m.id, role: m.role as "user" | "advisor" | "system",
+        advisorId: m.advisor_id, advisorName: m.advisor_name,
+        content: m.content, timestamp: new Date(m.created_at).getTime(),
+        sequence: m.sequence, metadata: m.metadata,
+      });
+    }
   }
   if (msgs.length === 0) {
     msgs.push({ id: "system-welcome", role: "system", content: "议事厅已开启。请向军师团提问。", timestamp: Date.now() });
@@ -61,6 +70,7 @@ function CouncilChat() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function init() {
@@ -69,12 +79,15 @@ function CouncilChat() {
       setAdvisors(selected);
       setAllAdvisors(list);
 
-      if (resumeParam === "1" && sessionId) {
+      if (sessionId) {
         const detail = await fetchSessionDetail(sessionId).catch(() => null);
-        if (detail && detail.messages) setMessages(buildMessagesFromSession(detail));
-        else setMessages([{ id: "system-welcome", role: "system", content: `${selected.map((a) => a.name).join("、")} 已就位。`, timestamp: Date.now() }]);
+        if (detail && detail.messages && detail.messages.length > 0) {
+          setMessages(buildMessagesFromSession(detail));
+        } else {
+          setMessages([{ id: "system-welcome", role: "system", content: `${selected.map((a) => a.name).join("、")} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }]);
+        }
       } else {
-        setMessages([{ id: "system-welcome", role: "system", content: `${selected.map((a) => a.name).join("、")} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }]);
+        setMessages([{ id: "system-welcome", role: "system", content: "议事厅已开启。请向军师团提问。", timestamp: Date.now() }]);
       }
       setInitialLoading(false);
     }
@@ -305,7 +318,9 @@ function CouncilChat() {
                     const isReplying = replyingId === adv.id;
                     return (
                       <motion.div key={adv.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
-                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-default ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"}`}>
+                        onDoubleClick={() => { setInput(`@${adv.name} `); inputRef.current?.focus(); }}
+                        title={`双击 @${adv.name}`}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-pointer ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"}`}>
                         <Avatar src={adv.avatar} name={adv.name} size="lg" colorClass={AVATAR_COLORS[i % AVATAR_COLORS.length]} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
@@ -375,8 +390,8 @@ function CouncilChat() {
           <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-3 py-2.5">
             <div className="flex gap-2 items-end">
               <div className="flex-1 bg-ink-800/80 border border-ink-700/40 rounded-2xl px-4 py-2.5">
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                  placeholder={hasStreaming || loading ? "军师正在发言..." : "提问，或 @军师名 指定谁回答..."}
+                <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                  placeholder={hasStreaming || loading ? "军师正在发言..." : "提问，或双击头像 @军师名 指定谁回答..."}
                   disabled={loading || !!hasStreaming}
                   className="w-full bg-transparent text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none" />
               </div>

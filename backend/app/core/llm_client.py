@@ -6,6 +6,8 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 
+_client: Optional[AsyncOpenAI] = None
+
 
 def _get_client() -> AsyncOpenAI:
     global _client

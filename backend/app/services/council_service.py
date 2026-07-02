@@ -26,6 +26,11 @@ from app.services.memory.context_manager import context_manager
 class CouncilService:
     """Orchestrates multi-advisor chat sessions."""
 
+    def __init__(self):
+        # Track pending background persist tasks per session.
+        # Awaited before loading history to ensure DB consistency.
+        self._pending_persists: dict[str, asyncio.Task] = {}
+
     async def create_session(
         self,
         db: AsyncSession,
@@ -197,6 +202,21 @@ class CouncilService:
         )
         print(f"[TIMING council] pre-advisor setup took {(time.perf_counter() - t0)*1000:.0f}ms total", flush=True)
 
+        # Load conversation history BEFORE saving the current user message.
+        # This ensures history contains only prior messages, not the current
+        # question (which is passed separately as enhanced_question).
+        conversation_history: list[dict] = []
+        if is_resume:
+            pending = self._pending_persists.pop(session_id, None)
+            if pending and not pending.done():
+                await pending
+            history_msgs = await session_store.get_messages(db, session_id)
+            conversation_history = [
+                {"role": m.role, "content": m.content, "advisor_name": m.advisor_name or ""}
+                for m in history_msgs
+            ]
+            print(f"[TIMING council] loaded {len(conversation_history)} history messages", flush=True)
+
         # Save user message
         t1 = time.perf_counter()
         await session_store.add_message(
@@ -204,11 +224,16 @@ class CouncilService:
         )
         print(f"[TIMING council] save_user_msg took {(time.perf_counter() - t1)*1000:.0f}ms", flush=True)
 
-        # Retrieve user memories for context
+        # Retrieve user memories for context (session-scoped)
         t2 = time.perf_counter()
-        memories = await user_memory_service.retrieve_relevant(db, user_id, question)
-        memory_context = user_memory_service.format_memories_for_prompt(memories)
-        print(f"[TIMING council] retrieve_memories took {(time.perf_counter() - t2)*1000:.0f}ms, got {len(memories)} memories", flush=True)
+        memories = await user_memory_service.retrieve_relevant(db, user_id, question, session_id=session_id)
+        # Only inject memories when the question has semantic content.
+        if len(question) >= 10 and "继续发言" not in question:
+            memory_context = user_memory_service.format_memories_for_prompt(memories)
+        else:
+            memory_context = ""
+            memories = []
+        print(f"[TIMING council] retrieve_memories took {(time.perf_counter() - t2)*1000:.0f}ms, got {len(memories)} memories, injected={bool(memory_context)}", flush=True)
 
         enhanced_question = question
         if memory_context:
@@ -242,6 +267,7 @@ class CouncilService:
                 response = await agent_registry.ask_advisor_streaming(
                     advisor_id, session_id, user_id, enhanced_question,
                     is_resume=is_resume,
+                    history=conversation_history if is_resume else None,
                     on_token=lambda token, _name=advisor_name, _aid=advisor_id: queue.put(
                         AskEvent(advisor_id=_aid, advisor_name=_name, content=token, done=False)
                     ),
@@ -310,9 +336,10 @@ class CouncilService:
         # Flush all deferred DB writes + budget persist in background
         # CRITICAL: must NOT block the SSE generator from finishing —
         # otherwise the frontend stays stuck on "thinking" forever.
-        asyncio.create_task(self._background_persist(
+        task = asyncio.create_task(self._background_persist(
             session_id, user_id, pending_db_writes, total_response_chars, budget.over_budget,
         ))
+        self._pending_persists[session_id] = task
         print(f"[TIMING council] ask_council DONE total={(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
 
     async def _background_persist(
