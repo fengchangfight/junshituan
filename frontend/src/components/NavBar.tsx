@@ -13,9 +13,6 @@ export default function NavBar() {
     if (info) {
       setUsername(info.username);
       setIsAdmin(info.isAdmin);
-      console.log("NavBar: username=" + info.username + " isAdmin=" + info.isAdmin);
-    } else {
-      console.log("NavBar: no token found");
     }
   }, []);
 

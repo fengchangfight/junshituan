@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
 interface Props {
@@ -20,6 +20,9 @@ export default function Avatar({ src, name, size = "md", colorClass }: Props) {
   const [error, setError] = useState(false);
   const firstChar = name?.[0] || "?";
   const sizeClass = SIZE_MAP[size];
+
+  // Reset error state when src changes (e.g. advisor avatar URL updates)
+  useEffect(() => { setError(false); }, [src]);
 
   if (!src || error) {
     return (

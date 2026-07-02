@@ -11,7 +11,6 @@ import time
 from typing import Optional, Callable, Awaitable
 
 from app.services.agent.base_agent import AdvisorAgentGraph
-from app.services.agent.sub_agent import sub_agent_pool
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.persona_engine import get_persona_engine
 
@@ -56,11 +55,6 @@ class AgentRegistry:
                 print(f"[TIMING registry] retrieve_knowledge SKIPPED (no docs) persona={persona_id}", flush=True)
                 return []
 
-        # Build sub-agent dispatch
-        async def dispatch_sub_agent(task: str, context: str) -> str:
-            agent = sub_agent_pool.get("analyze")
-            return await agent.run(task, parent_context=context)
-
         # Build skill-enhanced system prompt
         from app.services.skill_engine import get_skill_engine
         skill_engine = get_skill_engine()
@@ -72,7 +66,6 @@ class AgentRegistry:
             persona_name=persona.name,
             system_prompt=system_prompt,
             retrieve_fn=retrieve_knowledge,
-            sub_agent_fn=dispatch_sub_agent,
         )
 
         self._agents[persona_id] = agent
@@ -82,7 +75,7 @@ class AgentRegistry:
     async def ask_advisor(
         self, persona_id: str, session_id: str, user_id: str,
         question: str, is_resume: bool = False,
-        history: list[dict] = None,
+        history: Optional[list[dict]] = None,
     ) -> str:
         """Ask advisor (non-streaming). Returns full response string."""
         return await self._ask_impl(persona_id, session_id, user_id, question, is_resume, history=history)
@@ -91,7 +84,7 @@ class AgentRegistry:
         self, persona_id: str, session_id: str, user_id: str,
         question: str, is_resume: bool,
         on_token: Callable[[str], Awaitable[None]],
-        history: list[dict] = None,
+        history: Optional[list[dict]] = None,
     ) -> str:
         """Ask advisor with per-token streaming callback.
 

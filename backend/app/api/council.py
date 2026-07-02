@@ -1,5 +1,3 @@
-import json
-
 from fastapi import APIRouter, HTTPException, Depends
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession

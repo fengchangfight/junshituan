@@ -14,7 +14,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db_models import Session, ChatMessage
+from app.models.db_models import Session
 from app.models.schemas import AskEvent
 from app.services.agent.agent_registry import agent_registry
 from app.services.budget_manager import budget_manager, TokenUsage
@@ -182,8 +182,8 @@ class CouncilService:
         est_input_tokens = len(question) // 2
         est_output_tokens = 800 * len(advisor_ids)  # est 800 tokens per advisor
         est_cost = (
-            est_input_tokens / 1_000_000 * budget_manager._input_price()
-            + est_output_tokens / 1_000_000 * budget_manager._output_price()
+            est_input_tokens / 1_000_000 * budget_manager.input_price()
+            + est_output_tokens / 1_000_000 * budget_manager.output_price()
         )
 
         if not budget.can_spend(est_cost):
@@ -412,16 +412,19 @@ class CouncilService:
                 ]
                 await user_memory_service.extract_memories(db, user_id, session_id, conv)
                 if len(group_messages) > 30:
-                    summary, _ = await context_manager.summarize_history([], keep_last=10)
-                    await session_store.update_summary(db, session_id, summary)
+                    from langchain_core.messages import HumanMessage, AIMessage
+                    lc_messages = []
+                    for gm in group_messages:
+                        if gm.role == "user":
+                            lc_messages.append(HumanMessage(content=gm.content[:500]))
+                        else:
+                            lc_messages.append(AIMessage(content=gm.content[:500]))
+                    summary, _ = await context_manager.summarize_history(lc_messages, keep_last=10)
+                    if summary:
+                        await session_store.update_summary(db, session_id, summary)
                 await user_memory_service.consolidate(db, user_id)
         except Exception as e:
             print(f"[DEBUG council] background memory extraction failed: {e}", flush=True)
-
-    def _chunk_response(self, text: str, chunk_size: int = 50):
-        for i in range(0, len(text), chunk_size):
-            yield text[i : i + chunk_size]
-
 
 council_service = CouncilService()
 

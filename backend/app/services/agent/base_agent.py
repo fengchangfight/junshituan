@@ -18,7 +18,6 @@ Graph:
 """
 
 import asyncio
-import json
 import re
 import time
 from typing import TypedDict, Annotated, Literal, Optional, Callable, Awaitable
@@ -148,14 +147,12 @@ class AdvisorAgentGraph:
         persona_name: str,
         system_prompt: str,
         retrieve_fn,
-        sub_agent_fn=None,
         checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
         self.persona_id = persona_id
         self.persona_name = persona_name
         self.system_prompt = system_prompt
         self.retrieve_fn = retrieve_fn
-        self.sub_agent_fn = sub_agent_fn
         self.checkpointer = checkpointer or MemorySaver()
         self.graph = self._build()
 
@@ -515,7 +512,7 @@ complexity=complex：需要多步推理、对比分析、数学计算、用户�
         Otherwise builds context from the session's conversation history (DB).
         This ensures advisors joining mid-conversation see the full discussion.
         """
-        print(f"[DEBUG agent:{self.persona_id}] resume() START session={session_id} has_checkpoint=False has_history={history is not None}", flush=True)
+        print(f"[DEBUG agent:{self.persona_id}] resume() START session={session_id} has_history={history is not None}", flush=True)
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": f"{session_id}_{self.persona_id}",

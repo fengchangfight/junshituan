@@ -47,7 +47,7 @@ export default function ChatBubble({
   }
 
   const isUser = message.role === "user";
-  const isStreaming = message.isStreaming && message.content === "";
+  const isThinking = message.isStreaming && message.content === "";
   const isPartial = message.isStreaming && message.content !== "";
 
   if (isUser) {
@@ -93,7 +93,7 @@ export default function ChatBubble({
             <span className="text-xs font-bold text-ink-300">
               {advisor.name}
             </span>
-            {isStreaming && (
+            {isThinking && (
               <motion.span
                 animate={{ opacity: [0.3, 1, 0.3] }}
                 transition={{ repeat: Infinity, duration: 1 }}
@@ -108,7 +108,7 @@ export default function ChatBubble({
         <div
           className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed bg-ink-900/80 border border-ink-800/40 text-ink-200 shadow-sm`}
         >
-          {isStreaming ? (
+          {isThinking ? (
             <ThinkingDots />
           ) : (
             <p className="whitespace-pre-wrap break-words">

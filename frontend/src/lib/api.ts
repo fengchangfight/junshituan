@@ -70,7 +70,7 @@ export async function register(username: string, password: string, displayName?:
 // ── Advisors ────────────────────────────────────────────────────────
 
 export async function fetchAdvisors(): Promise<Advisor[]> {
-  const res = await fetch(`${API_BASE}/api/advisors?_t=${Date.now()}`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/api/advisors`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch advisors");
   return res.json();
 }
@@ -147,7 +147,6 @@ export async function* askCouncil(
     body: JSON.stringify(body),
   });
 
-  console.log("[askCouncil] fetch response ok, starting SSE reader...");
   if (!res.ok || !res.body) throw new Error("Failed to ask council");
 
   const reader = res.body.getReader();
@@ -156,7 +155,6 @@ export async function* askCouncil(
 
   while (true) {
     const { done, value } = await reader.read();
-    console.log("[askCouncil] reader.read() chunk:", { done, size: value?.length || 0 });
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
@@ -165,11 +163,12 @@ export async function* askCouncil(
 
     for (const line of lines) {
       if (line.startsWith("data: ")) {
-        const data = JSON.parse(line.slice(6));
-        console.log("[askCouncil] SSE event:", data.advisor_id, "content_len:", data.content?.length || 0, "done:", data.done);
-        yield data;
+        try {
+          yield JSON.parse(line.slice(6));
+        } catch {
+          // Skip malformed SSE data lines (heartbeats, partial chunks)
+        }
       }
     }
   }
-  console.log("[askCouncil] SSE stream ended");
 }

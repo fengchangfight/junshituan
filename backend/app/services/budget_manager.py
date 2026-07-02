@@ -138,10 +138,10 @@ class BudgetManager:
         usage = TokenUsage(input_tokens=est_tokens, output_tokens=est_output)
         return usage.cost_cny
 
-    def _input_price(self) -> float:
+    def input_price(self) -> float:
         return settings.llm_input_price_per_m
 
-    def _output_price(self) -> float:
+    def output_price(self) -> float:
         return settings.llm_output_price_per_m
 
 

@@ -8,6 +8,7 @@ Design principles (inspired by Hermes agent):
 5. Decay: less-accessed memories fade over time
 """
 
+import json
 from datetime import datetime, timezone
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,7 +67,6 @@ class UserMemoryService:
         ):
             result += token
 
-        import json
         memories = []
         try:
             start = result.find("[")

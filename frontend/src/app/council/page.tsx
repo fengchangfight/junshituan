@@ -65,8 +65,6 @@ function CouncilChat() {
   const sessionId = searchParams.get("id") || "";
   const advisorIdsParam = (searchParams.get("advisors") || "").split(",").filter(Boolean);
   const title = searchParams.get("title") || "";
-  const resumeParam = searchParams.get("resume") || "";
-
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [allAdvisors, setAllAdvisors] = useState<Advisor[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -133,10 +131,8 @@ function CouncilChat() {
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      console.log("[handleSend] calling askCouncil with", targets.length, "targets");
       const stream = askCouncil(sessionId, cleanQ, targets.map((t) => t.id));
       timeout = setTimeout(() => {
-        console.log("[handleSend] 120s TIMEOUT fired");
         setMessages((prev) =>
           prev.map((m) => (m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
         );
@@ -144,7 +140,6 @@ function CouncilChat() {
         setLoading(false);
       }, 120000 * Math.max(targets.length, 1));
       for await (const event of stream) {
-        console.log("[handleSend] event:", { advisor_id: event.advisor_id, contentLen: event.content?.length, done: event.done });
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
@@ -195,9 +190,8 @@ function CouncilChat() {
         }
       }
       clearTimeout(timeout);
-      console.log("[handleSend] stream ended normally");
     } catch (err) {
-      console.error("[handleSend] catch error:", err);
+      console.error("[handleSend] stream error:", err);
       setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, content: "[回答失败]", isStreaming: false } : m));
     } finally {
       clearTimeout(timeout);

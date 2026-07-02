@@ -9,9 +9,8 @@ Inspired by Claude Code's context management strategies:
 
 import hashlib
 from typing import Optional
-from functools import lru_cache
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 
 from app.core.config import settings
 from app.core.llm_client import chat_stream
