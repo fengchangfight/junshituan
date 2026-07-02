@@ -257,7 +257,7 @@ class MilvusStore:
         results = self.client.hybrid_search(
             collection_name=COLLECTION_NAME,
             reqs=[dense_req, sparse_req],
-            rerank=ranker,
+            ranker=ranker,
             limit=top_k,
             filter=self._persona_filter(persona_id),
             output_fields=["text", "source"],
