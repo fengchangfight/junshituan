@@ -131,7 +131,7 @@ export async function* askCouncil(
   sessionId: string,
   question: string,
   targetAdvisorId?: string
-): AsyncGenerator<{ advisorId: string; advisorName?: string; content: string; done: boolean; metadata?: Record<string, any> }> {
+): AsyncGenerator<{ advisor_id: string; advisor_name?: string; content: string; done: boolean; metadata?: Record<string, any> }> {
   const body: Record<string, string> = { question };
   if (targetAdvisorId) body.target_advisor_id = targetAdvisorId;
   const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}/ask`, {
@@ -143,6 +143,7 @@ export async function* askCouncil(
     body: JSON.stringify(body),
   });
 
+  console.log("[askCouncil] fetch response ok, starting SSE reader...");
   if (!res.ok || !res.body) throw new Error("Failed to ask council");
 
   const reader = res.body.getReader();
@@ -151,6 +152,7 @@ export async function* askCouncil(
 
   while (true) {
     const { done, value } = await reader.read();
+    console.log("[askCouncil] reader.read() chunk:", { done, size: value?.length || 0 });
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
@@ -160,8 +162,10 @@ export async function* askCouncil(
     for (const line of lines) {
       if (line.startsWith("data: ")) {
         const data = JSON.parse(line.slice(6));
+        console.log("[askCouncil] SSE event:", data.advisor_id, "content_len:", data.content?.length || 0, "done:", data.done);
         yield data;
       }
     }
   }
+  console.log("[askCouncil] SSE stream ended");
 }

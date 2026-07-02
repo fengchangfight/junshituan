@@ -5,8 +5,6 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 
-_client: Optional[AsyncOpenAI] = None
-
 
 def _get_client() -> AsyncOpenAI:
     global _client
@@ -14,7 +12,7 @@ def _get_client() -> AsyncOpenAI:
         _client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
-            timeout=30.0,
+            timeout=120.0,
         )
     return _client
 
@@ -34,29 +32,42 @@ async def chat_stream(
     messages: list[dict[str, str]],
     temperature: float = 0.8,
     usage_out: Optional[StreamResult] = None,
+    timeout: float = 120.0,
 ) -> AsyncIterator[str]:
     """Stream chat completion. Pass usage_out to capture token counts."""
-    full_messages = [{"role": "system", "content": system_prompt}, *messages]
+    full_messages: list[dict[str, str]] = []
+    if system_prompt:
+        full_messages.append({"role": "system", "content": system_prompt})
+    full_messages.extend(messages)
 
-    stream = await _get_client().chat.completions.create(
-        model=settings.llm_model,
-        messages=full_messages,
-        temperature=temperature,
-        stream=True,
-        stream_options={"include_usage": True},
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        timeout=timeout,
     )
+    stream = await client.chat.completions.create(
+            model=settings.llm_model,
+            messages=full_messages,
+            temperature=temperature,
+            stream=True,
+        )
+    print(f"[DEBUG llm] chat_stream request sent to {settings.openai_base_url} model={settings.llm_model}, waiting for chunks...", flush=True)
 
     usage = usage_out or StreamResult()
 
     async def token_gen() -> AsyncIterator[str]:
-        async for chunk in stream:
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    yield delta.content
-            if chunk.usage:
-                usage.input_tokens = chunk.usage.prompt_tokens or 0
-                usage.output_tokens = chunk.usage.completion_tokens or 0
+        try:
+            async for chunk in stream:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        yield delta.content
+                if chunk.usage:
+                    usage.input_tokens = chunk.usage.prompt_tokens or 0
+                    usage.output_tokens = chunk.usage.completion_tokens or 0
+        except Exception as e:
+            print(f"[DEBUG llm] chat_stream EXCEPTION: {type(e).__name__}: {e}", flush=True)
+            raise
 
     async for token in token_gen():
         yield token
@@ -68,12 +79,14 @@ async def chat(
     temperature: float = 0.7,
 ) -> str:
     """Non-streaming chat completion. Returns the full response text."""
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_prompt})
+
     response = await _get_client().chat.completions.create(
         model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
         temperature=temperature,
     )
     return response.choices[0].message.content or ""

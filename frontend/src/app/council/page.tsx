@@ -115,8 +115,10 @@ function CouncilChat() {
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
+      console.log("[handleSend] calling askCouncil...");
       const stream = askCouncil(sessionId, cleanQ, target.id);
       timeout = setTimeout(() => {
+        console.log("[handleSend] 120s TIMEOUT fired");
         setMessages((prev) =>
           prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
         );
@@ -124,6 +126,7 @@ function CouncilChat() {
         setLoading(false);
       }, 120000); // 2 min timeout
       for await (const event of stream) {
+        console.log("[handleSend] event received:", { advisorId: event.advisor_id, contentLen: event.content?.length, done: event.done, metadataType: event.metadata?.type });
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
@@ -131,10 +134,10 @@ function CouncilChat() {
           clearTimeout(timeout);
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.advisorId === event.advisorId && m.isStreaming) {
+              if (m.advisorId === event.advisor_id && m.isStreaming) {
                 return {
                   ...m, content: m.content + (event.content || ""),
-                  advisorName: event.advisorName || m.advisorName,
+                  advisorName: event.advisor_name || m.advisorName,
                   isStreaming: !event.done,
                 };
               }
@@ -144,7 +147,9 @@ function CouncilChat() {
         }
       }
       clearTimeout(timeout);
-    } catch {
+      console.log("[handleSend] stream ended normally");
+    } catch (err) {
+      console.error("[handleSend] catch error:", err);
       setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, content: "[回答失败]", isStreaming: false } : m));
     } finally {
       clearTimeout(timeout);
@@ -195,10 +200,10 @@ function CouncilChat() {
           } else {
             setMessages((prev) =>
               prev.map((m) => {
-                if (m.advisorId === event.advisorId && m.isStreaming) {
+                if (m.advisorId === event.advisor_id && m.isStreaming) {
                   return {
                     ...m, content: m.content + (event.content || ""),
-                    advisorName: event.advisorName || m.advisorName,
+                    advisorName: event.advisor_name || m.advisorName,
                     isStreaming: !event.done,
                   };
                 }

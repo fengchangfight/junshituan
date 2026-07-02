@@ -125,17 +125,23 @@ class IngestionPipelineService:
         return len(nodes)
 
     async def search(self, persona_id: str, query: str, top_k: int = 5) -> list[dict]:
+        print(f"[DEBUG pipeline] search START persona={persona_id} query={query[:60]}", flush=True)
         embedding = await embedding_provider.embed_single(query)
         if not embedding:
+            print(f"[DEBUG pipeline] search no embedding returned", flush=True)
             return []
+        print(f"[DEBUG pipeline] search embedding done, dim={len(embedding)}", flush=True)
         try:
             sparse_vecs = milvus_store.encode_query_sparse([query])
             sparse_vec = sparse_vecs[0] if sparse_vecs else None
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG pipeline] sparse encoding failed: {e}", flush=True)
             sparse_vec = None
-        return milvus_store.search(
+        result = milvus_store.search(
             persona_id, embedding, top_k=top_k, query_sparse_vec=sparse_vec,
         )
+        print(f"[DEBUG pipeline] search DONE, {len(result)} results", flush=True)
+        return result
 
     async def _get_dim(self) -> int:
         await embedding_provider.ensure_ready()

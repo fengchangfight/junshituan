@@ -1,4 +1,10 @@
+import sys
 from contextlib import asynccontextmanager
+
+# Force UTF-8 on Windows to prevent GBK encoding crashes with emoji
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

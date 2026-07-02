@@ -11,7 +11,12 @@ _async_session = None
 def _get_engine():
     global _engine
     if _engine is None:
-        _engine = create_async_engine(settings.database_url, echo=False)
+        _engine = create_async_engine(
+            settings.database_url,
+            echo=False,
+            connect_args={"timeout": 5} if "sqlite" in settings.database_url else {"timeout": 5},
+            pool_pre_ping=True,
+        )
     return _engine
 
 

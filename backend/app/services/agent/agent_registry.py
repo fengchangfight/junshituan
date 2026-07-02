@@ -27,7 +27,10 @@ class AgentRegistry:
         """Get or create an agent instance for a persona."""
         if persona_id in self._agents:
             self._bump_access(persona_id)
+            print(f"[DEBUG registry] get_or_create cache HIT for {persona_id}", flush=True)
             return self._agents[persona_id]
+
+        print(f"[DEBUG registry] get_or_create cache MISS for {persona_id}, creating...", flush=True)
 
         if len(self._agents) >= self._MAX_AGENTS:
             oldest = self._access_order[0]
@@ -36,11 +39,15 @@ class AgentRegistry:
         engine = get_persona_engine()
         persona = engine.get(persona_id)
         if not persona:
+            print(f"[DEBUG registry] get_or_create persona {persona_id} not found in engine", flush=True)
             return None
+        print(f"[DEBUG registry] get_or_create persona={persona.name} found, building agent...", flush=True)
 
         # Build knowledge retrieval function for this persona
         async def retrieve_knowledge(query: str) -> list[str]:
+            print(f"[DEBUG registry] retrieve_knowledge START persona={persona_id} query={query[:60]}", flush=True)
             docs = await ingest_pipeline.search(persona_id, query, top_k=5)
+            print(f"[DEBUG registry] retrieve_knowledge DONE persona={persona_id} got {len(docs)} docs", flush=True)
             return [d["text"] for d in docs]
 
         # Build sub-agent dispatch
@@ -75,14 +82,19 @@ class AgentRegistry:
         is_resume: bool = False,
     ) -> str:
         """Ask an advisor a question. Handles both new and resumed sessions."""
+        print(f"[DEBUG registry] ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume}", flush=True)
         agent = self.get_or_create(persona_id)
         if not agent:
+            print(f"[DEBUG registry] ask_advisor agent not found for {persona_id}", flush=True)
             return f"[{persona_id}] 该军师尚未配置。"
+        print(f"[DEBUG registry] ask_advisor calling agent.{'resume' if is_resume else 'run'}...", flush=True)
 
         if is_resume:
-            return await agent.resume(session_id, user_id, question)
+            result = await agent.resume(session_id, user_id, question)
         else:
-            return await agent.run(session_id, user_id, question)
+            result = await agent.run(session_id, user_id, question)
+        print(f"[DEBUG registry] ask_advisor DONE persona={persona_id} result_len={len(result)}", flush=True)
+        return result
 
     def remove(self, persona_id: str):
         """Remove an agent instance (e.g., when KB is re-ingested)."""

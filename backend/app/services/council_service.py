@@ -144,12 +144,15 @@ class CouncilService:
         If target_advisor_id is set, only that advisor responds (serial mode).
         Otherwise all advisors respond in parallel.
         """
+        print(f"[DEBUG council] ask_council START session={session_id} user={user_id} question={question[:80]}", flush=True)
         session = await self.get_session(db, session_id, user_id)
         if not session:
+            print(f"[DEBUG council] session not found", flush=True)
             yield AskEvent(advisor_id="system", content="会话不存在或已过期", done=True)
             return
 
         advisor_ids = session.advisor_ids or []
+        print(f"[DEBUG council] advisor_ids={advisor_ids}", flush=True)
         if target_advisor_id:
             if target_advisor_id not in advisor_ids:
                 yield AskEvent(advisor_id="system", content="该军师不在议事厅中", done=True)
@@ -202,11 +205,15 @@ class CouncilService:
         if memory_context:
             enhanced_question = f"{memory_context}\n\n[当前问题]\n{question}"
 
-        queue: asyncio.Queue[AskEvent | None] = asyncio.Queue()
         total_response_chars = 0
+        queue: asyncio.Queue[AskEvent] = asyncio.Queue()
+
+        # Collect DB writes to execute after streaming is done
+        pending_db_writes: list[dict] = []
 
         async def ask_one(advisor_id: str):
             nonlocal total_response_chars
+            print(f"[DEBUG council] ask_one START advisor={advisor_id}", flush=True)
             try:
                 from app.services.persona_engine import get_persona_engine
                 engine = get_persona_engine()
@@ -221,65 +228,61 @@ class CouncilService:
                 ))
 
                 response = await agent_registry.ask_advisor(
-                    advisor_id,
-                    session_id,
-                    user_id,
-                    enhanced_question,
-                    is_resume=is_resume,
+                    advisor_id, session_id, user_id, enhanced_question, is_resume=is_resume,
                 )
+                print(f"[DEBUG council] ask_one got response from {advisor_id}: len={len(response)}", flush=True)
 
                 total_response_chars += len(response)
 
-                for chunk in self._chunk_response(response, chunk_size=50):
+                for chunk in self._chunk_response(response):
                     await queue.put(AskEvent(
-                        advisor_id=advisor_id,
-                        advisor_name=advisor_name,
-                        content=chunk,
-                        done=False,
+                        advisor_id=advisor_id, advisor_name=advisor_name, content=chunk, done=False,
                     ))
 
-                await session_store.add_message(
-                    db,
-                    session_id,
-                    role="advisor",
-                    advisor_id=advisor_id,
-                    advisor_name=advisor_name,
-                    content=response,
-                )
-
+                # Defer DB write — don't block the done event
+                pending_db_writes.append({
+                    "role": "advisor",
+                    "content": response,
+                    "advisor_id": advisor_id,
+                    "advisor_name": advisor_name,
+                })
             except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
+                safe_tb = tb[:500].encode('ascii', errors='replace').decode('ascii')
+                print(f"[DEBUG council] EXCEPTION {advisor_id}: {e}\n{safe_tb}", flush=True)
                 await queue.put(AskEvent(
-                    advisor_id=advisor_id,
-                    advisor_name=advisor_id,
+                    advisor_id=advisor_id, advisor_name=advisor_id,
                     content=f"\n[思考受阻：{e}]",
                 ))
             finally:
                 await queue.put(AskEvent(
-                    advisor_id=advisor_id,
-                    advisor_name="",
-                    content="",
-                    done=True,
+                    advisor_id=advisor_id, advisor_name="", content="", done=True,
                 ))
 
-        tasks = [asyncio.create_task(ask_one(aid)) for aid in advisor_ids]
-        done_count = 0
-        total = len(tasks)
+        # Process advisors sequentially: start one, drain its events, then next
+        for advisor_id in advisor_ids:
+            task = asyncio.create_task(ask_one(advisor_id))
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=300.0)
+                except asyncio.TimeoutError:
+                    print(f"[DEBUG council] TIMEOUT waiting for done event from {advisor_id}", flush=True)
+                    yield AskEvent(
+                        advisor_id=advisor_id, advisor_name="",
+                        content="\n[回答超时]", done=True,
+                    )
+                    break
+                yield event
+                if event.done:
+                    break
 
-        while done_count < total:
-            event = await queue.get()
-            if event.done:
-                done_count += 1
-            yield event
-
-        await asyncio.gather(*tasks)
-
-        # Record usage: estimate actual tokens from input + output
-        actual_input = len(enhanced_question) // 2 + len(advisor_ids) * 800  # + system prompt overhead
+        # Record usage
+        actual_input = len(enhanced_question) // 2 + len(advisor_ids) * 800
         actual_output = total_response_chars // 2
         usage = TokenUsage(input_tokens=actual_input, output_tokens=actual_output)
         cost = budget.add_usage(usage)
 
-        # Emit budget update
         yield AskEvent(
             advisor_id="system",
             content="",
@@ -291,25 +294,68 @@ class CouncilService:
             done=False,
         )
 
-        await budget_manager.persist(session_id, db)
+        # Flush all deferred DB writes + budget persist in background
+        # CRITICAL: must NOT block the SSE generator from finishing —
+        # otherwise the frontend stays stuck on "thinking" forever.
+        asyncio.create_task(self._background_persist(
+            session_id, user_id, pending_db_writes, total_response_chars, budget.over_budget,
+        ))
 
-        # Extract memories from this conversation turn
-        if not budget.over_budget:
-            group_messages = await session_store.get_messages(db, session_id, limit=20)
-            conv = [
-                {"role": m.role, "content": m.content[:500]}
-                for m in group_messages
-            ]
-            await user_memory_service.extract_memories(db, user_id, session_id, conv)
+    async def _background_persist(
+        self, session_id: str, user_id: str,
+        pending_writes: list[dict], total_chars: int, over_budget: bool,
+    ):
+        """Persist advisor messages + budget + memory extraction in background.
 
-            if len(group_messages) > 30:
-                summary, _ = await context_manager.summarize_history(
-                    [],
-                    keep_last=10,
+        Runs in a separate task so the SSE stream can close immediately after
+        the budget_update event, preventing the frontend from hanging.
+
+        Uses its own DB session since the request-scoped session may be closed
+        before this task runs.
+        """
+        from app.db.database import _get_sessionmaker
+        try:
+            sessionmaker = _get_sessionmaker()
+            async with sessionmaker() as bg_db:
+                # Save advisor messages
+                for w in pending_writes:
+                    await session_store.add_message(
+                        bg_db, session_id,
+                        role=w["role"],
+                        content=w["content"],
+                        advisor_id=w["advisor_id"],
+                        advisor_name=w.get("advisor_name", ""),
+                    )
+
+                # Persist budget
+                await budget_manager.persist(session_id, bg_db)
+
+            # Memory extraction (uses its own session internally)
+            if not over_budget:
+                await self._background_extract_memories(
+                    session_id, user_id, total_chars
                 )
-                await session_store.update_summary(db, session_id, summary)
+        except Exception as e:
+            print(f"[DEBUG council] background persist failed: {e}", flush=True)
 
-            await user_memory_service.consolidate(db, user_id)
+    async def _background_extract_memories(self, session_id, user_id, total_chars):
+        """Run memory extraction with its own DB session."""
+        from app.db.database import _get_sessionmaker
+        try:
+            sessionmaker = _get_sessionmaker()
+            async with sessionmaker() as db:
+                group_messages = await session_store.get_messages(db, session_id, limit=20)
+                conv = [
+                    {"role": m.role, "content": m.content[:500]}
+                    for m in group_messages
+                ]
+                await user_memory_service.extract_memories(db, user_id, session_id, conv)
+                if len(group_messages) > 30:
+                    summary, _ = await context_manager.summarize_history([], keep_last=10)
+                    await session_store.update_summary(db, session_id, summary)
+                await user_memory_service.consolidate(db, user_id)
+        except Exception as e:
+            print(f"[DEBUG council] background memory extraction failed: {e}", flush=True)
 
     def _chunk_response(self, text: str, chunk_size: int = 50):
         for i in range(0, len(text), chunk_size):

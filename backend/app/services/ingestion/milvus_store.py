@@ -198,17 +198,23 @@ class MilvusStore:
         top_k: int = 5,
         query_sparse_vec: Optional[dict] = None,
     ) -> list[dict]:
+        print(f"[DEBUG milvus] search START persona={persona_id} top_k={top_k} has_sparse={query_sparse_vec is not None}", flush=True)
         self._lazy_init()
         try:
             if not self.client.has_collection(COLLECTION_NAME):
+                print(f"[DEBUG milvus] collection {COLLECTION_NAME} not found", flush=True)
                 return []
             self._ensure_loaded()
             if query_sparse_vec:
-                return self._hybrid_search(persona_id, query_embedding, query_sparse_vec, top_k)
+                result = self._hybrid_search(persona_id, query_embedding, query_sparse_vec, top_k)
             else:
-                return self._dense_search(persona_id, query_embedding, top_k)
+                result = self._dense_search(persona_id, query_embedding, top_k)
+            print(f"[DEBUG milvus] search DONE, got {len(result)} results", flush=True)
+            return result
         except Exception as e:
-            print(f"[Milvus] search error for {persona_id}: {e}")
+            print(f"[Milvus] search error for {persona_id}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             return []
 
     def _persona_filter(self, persona_id: str) -> str:

@@ -59,13 +59,17 @@ class EmbeddingProvider:
         return [d.embedding for d in resp.data]
 
     async def embed_single(self, text: str) -> list[float]:
+        print(f"[DEBUG embed] embed_single START text_len={len(text)}", flush=True)
         await self._ensure_ready()
         client = _make_async_client()
+        print(f"[DEBUG embed] embed_single calling {settings.embedding_base_url} model={settings.embedding_model}...", flush=True)
         resp = await client.embeddings.create(
             model=settings.embedding_model,
             input=[text],
         )
-        return resp.data[0].embedding
+        emb = resp.data[0].embedding
+        print(f"[DEBUG embed] embed_single DONE dim={len(emb)}", flush=True)
+        return emb
 
     async def ensure_ready(self):
         await self._ensure_ready()
