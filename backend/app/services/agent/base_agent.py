@@ -25,15 +25,11 @@ from typing import TypedDict, Annotated, Literal, Optional, Callable, Awaitable
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.core.config import settings
 from app.core.llm_client import chat_stream
-
-import sqlite3
-import os
 
 # ── Persistent Checkpointer ──────────────────────────────────────────────
 
@@ -41,22 +37,16 @@ _checkpointer: Optional[BaseCheckpointSaver] = None
 
 
 def _get_checkpointer() -> BaseCheckpointSaver:
-    """Lazy-init a shared SqliteSaver backed by the project data directory.
+    """Lazy-init a shared PostgresCheckpointer backed by our existing DB.
 
-    Uses SQLite WAL mode for concurrent read/write across async tasks.
-    Survives backend restarts — all agent state is persisted to disk.
+    Survives backend restarts — all agent state is persisted to PostgreSQL
+    via the agent_checkpoints table.
     """
     global _checkpointer
     if _checkpointer is None:
-        db_dir = os.path.join(os.path.dirname(settings.database_url.replace("sqlite+aiosqlite:///", "")), "..")
-        db_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "checkpoints.db")
-        # Resolve relative to project root
-        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "checkpoints.db"))
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        conn = sqlite3.connect(db_path, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        _checkpointer = SqliteSaver(conn)
-        print(f"[checkpointer] SqliteSaver initialized at {db_path}", flush=True)
+        from app.services.agent.pg_checkpointer import PostgresCheckpointer
+        _checkpointer = PostgresCheckpointer()
+        print(f"[checkpointer] PostgresCheckpointer initialized", flush=True)
     return _checkpointer
 
 # ── Streaming Tag Parser ──────────────────────────────────────────────────
