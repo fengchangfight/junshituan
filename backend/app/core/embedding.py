@@ -2,13 +2,21 @@
 
 from typing import Optional
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from app.core.config import settings
 
 
-def _make_client() -> AsyncOpenAI:
+def _make_async_client() -> AsyncOpenAI:
     return AsyncOpenAI(
+        api_key=settings.embedding_api_key or settings.openai_api_key,
+        base_url=settings.embedding_base_url,
+        timeout=60.0,
+    )
+
+
+def _make_sync_client() -> OpenAI:
+    return OpenAI(
         api_key=settings.embedding_api_key or settings.openai_api_key,
         base_url=settings.embedding_base_url,
         timeout=60.0,
@@ -29,7 +37,7 @@ class EmbeddingProvider:
         if self._ready:
             return
         try:
-            client = _make_client()
+            client = _make_async_client()
             resp = await client.embeddings.create(
                 model=settings.embedding_model,
                 input=["test"],
@@ -43,7 +51,7 @@ class EmbeddingProvider:
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         await self._ensure_ready()
-        client = _make_client()
+        client = _make_async_client()
         resp = await client.embeddings.create(
             model=settings.embedding_model,
             input=texts,
@@ -52,7 +60,7 @@ class EmbeddingProvider:
 
     async def embed_single(self, text: str) -> list[float]:
         await self._ensure_ready()
-        client = _make_client()
+        client = _make_async_client()
         resp = await client.embeddings.create(
             model=settings.embedding_model,
             input=[text],
@@ -69,10 +77,25 @@ class EmbeddingProvider:
         return self._dim
 
     def embed_sync(self, texts: list[str]) -> list[list[float]]:
-        """Synchronous embed — for use in llama-index pipeline (runs in executor)."""
-        import asyncio
-        return asyncio.run(self.embed(texts))
+        """Synchronous embed — for llama-index pipeline (runs in executor thread)."""
+        client = _make_sync_client()
+        # Filter out empty/whitespace-only texts
+        clean = [t for t in texts if t.strip()]
+        if not clean:
+            return []
+        # Batch in groups of 8 to avoid request size limits
+        all_embeddings = []
+        for i in range(0, len(clean), 8):
+            batch = clean[i:i + 8]
+            resp = client.embeddings.create(
+                model=settings.embedding_model,
+                input=batch,
+                extra_body={"encoding_format": "float"},
+            )
+            all_embeddings.extend([d.embedding for d in resp.data])
+        return all_embeddings
 
 
 embedding_provider = EmbeddingProvider()
+
 
