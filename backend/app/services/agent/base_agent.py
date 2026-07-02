@@ -33,21 +33,11 @@ from app.core.llm_client import chat_stream
 
 # ── Persistent Checkpointer ──────────────────────────────────────────────
 
-_checkpointer: Optional[BaseCheckpointSaver] = None
-
 
 def _get_checkpointer() -> BaseCheckpointSaver:
-    """Lazy-init a shared PostgresCheckpointer backed by our existing DB.
-
-    Survives backend restarts — all agent state is persisted to PostgreSQL
-    via the agent_checkpoints table.
-    """
-    global _checkpointer
-    if _checkpointer is None:
-        from app.services.agent.pg_checkpointer import PostgresCheckpointer
-        _checkpointer = PostgresCheckpointer()
-        print(f"[checkpointer] PostgresCheckpointer initialized", flush=True)
-    return _checkpointer
+    """Create a PostgresCheckpointer — stateless, safe to call repeatedly."""
+    from app.services.agent.pg_checkpointer import PostgresCheckpointer
+    return PostgresCheckpointer()
 
 # ── Streaming Tag Parser ──────────────────────────────────────────────────
 
