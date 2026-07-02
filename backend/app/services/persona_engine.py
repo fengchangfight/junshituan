@@ -11,6 +11,7 @@ class Persona:
         self.short_bio: str = data.get("short_bio", "")
         self.style: str = data.get("style", "")
         self.avatar: str = data.get("avatar", "")
+        self.kb_doc_count: int = data.get("kb_doc_count", 0)
 
         tf = data.get("thinking_framework", {})
         self.analysis: str = tf.get("analysis", "")
@@ -48,6 +49,7 @@ class Persona:
             "core_beliefs": row.core_beliefs or [],
             "canonical_works": row.canonical_works or [],
             "knowledge_domain": row.knowledge_domain or {},
+            "kb_doc_count": row.kb_doc_count or 0,
         })
 
     def build_system_prompt(self, rag_context: str = "", skill_prompt: str = "") -> str:

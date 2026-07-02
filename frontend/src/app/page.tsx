@@ -66,7 +66,10 @@ export default function HomePage() {
       const title = names.join("、") + "的议事厅";
       const council = await createCouncil(ids, title);
       router.push(`/council?id=${council.id}&advisors=${ids.join(",")}&title=${encodeURIComponent(title)}`);
-    } catch { setLoading(false); }
+    } catch {
+      setLoading(false);
+      router.push("/login");
+    }
   };
 
   return (

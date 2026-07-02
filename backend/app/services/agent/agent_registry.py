@@ -4,9 +4,11 @@ Each advisor gets one agent instance. The registry ensures:
 - One agent per advisor persona (singleton)
 - Session-aware execution (each session has its own LangGraph thread)
 - Knowledge retrieval is wired to the correct Milvus collection
+- Streaming: on_token callback fires per LLM token for real-time frontend updates
 """
 
-from typing import Optional
+import time
+from typing import Optional, Callable, Awaitable
 
 from app.services.agent.base_agent import AdvisorAgentGraph
 from app.services.agent.sub_agent import sub_agent_pool
@@ -27,7 +29,6 @@ class AgentRegistry:
         """Get or create an agent instance for a persona."""
         if persona_id in self._agents:
             self._bump_access(persona_id)
-            print(f"[DEBUG registry] get_or_create cache HIT for {persona_id}", flush=True)
             return self._agents[persona_id]
 
         print(f"[DEBUG registry] get_or_create cache MISS for {persona_id}, creating...", flush=True)
@@ -39,16 +40,21 @@ class AgentRegistry:
         engine = get_persona_engine()
         persona = engine.get(persona_id)
         if not persona:
-            print(f"[DEBUG registry] get_or_create persona {persona_id} not found in engine", flush=True)
+            print(f"[DEBUG registry] persona {persona_id} not found", flush=True)
             return None
-        print(f"[DEBUG registry] get_or_create persona={persona.name} found, building agent...", flush=True)
+        print(f"[DEBUG registry] creating agent for {persona.name} kb_doc_count={persona.kb_doc_count}", flush=True)
 
-        # Build knowledge retrieval function for this persona
-        async def retrieve_knowledge(query: str) -> list[str]:
-            print(f"[DEBUG registry] retrieve_knowledge START persona={persona_id} query={query[:60]}", flush=True)
-            docs = await ingest_pipeline.search(persona_id, query, top_k=5)
-            print(f"[DEBUG registry] retrieve_knowledge DONE persona={persona_id} got {len(docs)} docs", flush=True)
-            return [d["text"] for d in docs]
+        # Skip Milvus entirely when persona has zero documents (saves ~1.4s)
+        if persona.kb_doc_count > 0:
+            async def retrieve_knowledge(query: str) -> list[str]:
+                print(f"[DEBUG registry] retrieve_knowledge START persona={persona_id} query={query[:60]}", flush=True)
+                docs = await ingest_pipeline.search(persona_id, query, top_k=5)
+                print(f"[DEBUG registry] retrieve_knowledge DONE persona={persona_id} got {len(docs)} docs", flush=True)
+                return [d["text"] for d in docs]
+        else:
+            async def retrieve_knowledge(query: str) -> list[str]:
+                print(f"[TIMING registry] retrieve_knowledge SKIPPED (no docs) persona={persona_id}", flush=True)
+                return []
 
         # Build sub-agent dispatch
         async def dispatch_sub_agent(task: str, context: str) -> str:
@@ -74,34 +80,52 @@ class AgentRegistry:
         return agent
 
     async def ask_advisor(
-        self,
-        persona_id: str,
-        session_id: str,
-        user_id: str,
-        question: str,
-        is_resume: bool = False,
+        self, persona_id: str, session_id: str, user_id: str,
+        question: str, is_resume: bool = False,
     ) -> str:
-        """Ask an advisor a question. Handles both new and resumed sessions."""
-        print(f"[DEBUG registry] ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume}", flush=True)
+        """Ask advisor (non-streaming). Returns full response string."""
+        return await self._ask_impl(persona_id, session_id, user_id, question, is_resume)
+
+    async def ask_advisor_streaming(
+        self, persona_id: str, session_id: str, user_id: str,
+        question: str, is_resume: bool,
+        on_token: Callable[[str], Awaitable[None]],
+    ) -> str:
+        """Ask advisor with per-token streaming callback.
+
+        on_token is called for every LLM output token as it arrives.
+        Frontend sees words appear in real time instead of waiting for
+        the full response.
+        """
+        return await self._ask_impl(persona_id, session_id, user_id, question, is_resume, on_token)
+
+    async def _ask_impl(
+        self, persona_id: str, session_id: str, user_id: str,
+        question: str, is_resume: bool,
+        on_token: Optional[Callable[[str], Awaitable[None]]] = None,
+    ) -> str:
+        print(f"[DEBUG registry] ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume} streaming={on_token is not None}", flush=True)
         agent = self.get_or_create(persona_id)
         if not agent:
-            print(f"[DEBUG registry] ask_advisor agent not found for {persona_id}", flush=True)
             return f"[{persona_id}] 该军师尚未配置。"
-        print(f"[DEBUG registry] ask_advisor calling agent.{'resume' if is_resume else 'run'}...", flush=True)
 
-        if is_resume:
-            result = await agent.resume(session_id, user_id, question)
-        else:
-            result = await agent.run(session_id, user_id, question)
-        print(f"[DEBUG registry] ask_advisor DONE persona={persona_id} result_len={len(result)}", flush=True)
-        return result
+        agent.set_token_callback(on_token)
+        try:
+            print(f"[DEBUG registry] calling agent.{'resume' if is_resume else 'run'}...", flush=True)
+            t0 = time.perf_counter()
+            if is_resume:
+                result = await agent.resume(session_id, user_id, question)
+            else:
+                result = await agent.run(session_id, user_id, question)
+            print(f"[TIMING registry] ask_advisor took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+            return result
+        finally:
+            agent.set_token_callback(None)
 
     def remove(self, persona_id: str):
-        """Remove an agent instance (e.g., when KB is re-ingested)."""
         self._evict(persona_id)
 
     def invalidate_all(self):
-        """Invalidate all agents (e.g., after global config change)."""
         for pid in list(self._agents.keys()):
             self._evict(pid)
 
@@ -111,7 +135,6 @@ class AgentRegistry:
         self._access_order.append(persona_id)
 
     def _evict(self, persona_id: str):
-        """Evict an agent and its in-memory checkpoints."""
         self._agents.pop(persona_id, None)
         if persona_id in self._access_order:
             self._access_order.remove(persona_id)

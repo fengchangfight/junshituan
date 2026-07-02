@@ -9,6 +9,7 @@ Handles:
 """
 
 import asyncio
+import time
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,8 +145,10 @@ class CouncilService:
         If target_advisor_id is set, only that advisor responds (serial mode).
         Otherwise all advisors respond in parallel.
         """
-        print(f"[DEBUG council] ask_council START session={session_id} user={user_id} question={question[:80]}", flush=True)
+        t0 = time.perf_counter()
+        print(f"[TIMING council] ask_council START session={session_id} user={user_id} question={question[:80]}", flush=True)
         session = await self.get_session(db, session_id, user_id)
+        print(f"[TIMING council] get_session took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
         if not session:
             print(f"[DEBUG council] session not found", flush=True)
             yield AskEvent(advisor_id="system", content="会话不存在或已过期", done=True)
@@ -185,21 +188,27 @@ class CouncilService:
             return
 
         # Emit budget info
+        t_adv_start = time.perf_counter()
         yield AskEvent(
             advisor_id="system",
             content=f"",
             metadata={"type": "budget", "budget": budget.to_dict()},
             done=False,
         )
+        print(f"[TIMING council] pre-advisor setup took {(time.perf_counter() - t0)*1000:.0f}ms total", flush=True)
 
         # Save user message
+        t1 = time.perf_counter()
         await session_store.add_message(
             db, session_id, role="user", content=question
         )
+        print(f"[TIMING council] save_user_msg took {(time.perf_counter() - t1)*1000:.0f}ms", flush=True)
 
         # Retrieve user memories for context
+        t2 = time.perf_counter()
         memories = await user_memory_service.retrieve_relevant(db, user_id, question)
         memory_context = user_memory_service.format_memories_for_prompt(memories)
+        print(f"[TIMING council] retrieve_memories took {(time.perf_counter() - t2)*1000:.0f}ms, got {len(memories)} memories", flush=True)
 
         enhanced_question = question
         if memory_context:
@@ -220,6 +229,7 @@ class CouncilService:
                 persona = engine.get(advisor_id)
                 advisor_name = persona.name if persona else advisor_id
 
+                # Initial ping — frontend creates pending message
                 await queue.put(AskEvent(
                     advisor_id=advisor_id,
                     advisor_name=advisor_name,
@@ -227,17 +237,18 @@ class CouncilService:
                     done=False,
                 ))
 
-                response = await agent_registry.ask_advisor(
-                    advisor_id, session_id, user_id, enhanced_question, is_resume=is_resume,
+                # Streaming agent: each LLM token → queue → SSE → frontend in real time
+                t_stream = time.perf_counter()
+                response = await agent_registry.ask_advisor_streaming(
+                    advisor_id, session_id, user_id, enhanced_question,
+                    is_resume=is_resume,
+                    on_token=lambda token, _name=advisor_name, _aid=advisor_id: queue.put(
+                        AskEvent(advisor_id=_aid, advisor_name=_name, content=token, done=False)
+                    ),
                 )
-                print(f"[DEBUG council] ask_one got response from {advisor_id}: len={len(response)}", flush=True)
+                print(f"[DEBUG council] ask_one got response from {advisor_id}: len={len(response)} streamed in {(time.perf_counter() - t_stream)*1000:.0f}ms", flush=True)
 
                 total_response_chars += len(response)
-
-                for chunk in self._chunk_response(response):
-                    await queue.put(AskEvent(
-                        advisor_id=advisor_id, advisor_name=advisor_name, content=chunk, done=False,
-                    ))
 
                 # Defer DB write — don't block the done event
                 pending_db_writes.append({
@@ -262,6 +273,7 @@ class CouncilService:
 
         # Process advisors sequentially: start one, drain its events, then next
         for advisor_id in advisor_ids:
+            t_adv = time.perf_counter()
             task = asyncio.create_task(ask_one(advisor_id))
             while True:
                 try:
@@ -275,6 +287,7 @@ class CouncilService:
                     break
                 yield event
                 if event.done:
+                    print(f"[TIMING council] advisor {advisor_id} total took {(time.perf_counter() - t_adv)*1000:.0f}ms", flush=True)
                     break
 
         # Record usage
@@ -300,6 +313,7 @@ class CouncilService:
         asyncio.create_task(self._background_persist(
             session_id, user_id, pending_db_writes, total_response_chars, budget.over_budget,
         ))
+        print(f"[TIMING council] ask_council DONE total={(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
 
     async def _background_persist(
         self, session_id: str, user_id: str,

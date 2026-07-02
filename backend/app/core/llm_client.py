@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Optional
 
@@ -45,6 +46,7 @@ async def chat_stream(
         base_url=settings.openai_base_url,
         timeout=timeout,
     )
+    t_start = time.perf_counter()
     stream = await client.chat.completions.create(
             model=settings.llm_model,
             messages=full_messages,
@@ -54,13 +56,18 @@ async def chat_stream(
     print(f"[DEBUG llm] chat_stream request sent to {settings.openai_base_url} model={settings.llm_model}, waiting for chunks...", flush=True)
 
     usage = usage_out or StreamResult()
+    first_token = True
 
     async def token_gen() -> AsyncIterator[str]:
+        nonlocal first_token
         try:
             async for chunk in stream:
                 if chunk.choices:
                     delta = chunk.choices[0].delta
                     if delta.content:
+                        if first_token:
+                            first_token = False
+                            print(f"[TIMING llm] TTFT={(time.perf_counter() - t_start)*1000:.0f}ms", flush=True)
                         yield delta.content
                 if chunk.usage:
                     usage.input_tokens = chunk.usage.prompt_tokens or 0
@@ -71,6 +78,7 @@ async def chat_stream(
 
     async for token in token_gen():
         yield token
+    print(f"[TIMING llm] chat_stream total={(time.perf_counter() - t_start)*1000:.0f}ms input_tokens={usage.input_tokens} output_tokens={usage.output_tokens}", flush=True)
 
 
 async def chat(
