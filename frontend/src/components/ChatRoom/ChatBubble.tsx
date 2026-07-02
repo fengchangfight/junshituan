@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Advisor, Message } from "@/lib/types";
+import Avatar from "./Avatar";
 
 interface Props {
   message: Message;
@@ -67,8 +68,6 @@ export default function ChatBubble({
     );
   }
 
-  const firstChar = advisor?.name?.[0] || "?";
-
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -76,13 +75,14 @@ export default function ChatBubble({
       className="flex gap-2.5 py-1.5"
     >
       {showAvatar ? (
-        <motion.div
-          initial={{ scale: 0.8 }}
-          animate={{ scale: 1 }}
-          className={`shrink-0 w-9 h-9 rounded-full bg-gradient-to-br ${avatarColor} flex items-center justify-center text-white text-sm font-bold shadow-md mt-0.5`}
-        >
-          {firstChar}
-        </motion.div>
+        <div className="mt-0.5">
+          <Avatar
+            src={advisor?.avatar || ""}
+            name={advisor?.name || "?"}
+            size="md"
+            colorClass={avatarColor}
+          />
+        </div>
       ) : (
         <div className="w-9 shrink-0" />
       )}

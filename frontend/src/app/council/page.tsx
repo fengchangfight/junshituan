@@ -7,6 +7,7 @@ import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
 import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle } from "lucide-react";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
+import Avatar from "@/components/ChatRoom/Avatar";
 
 const AVATAR_COLORS = [
   "from-red-600 to-red-800",
@@ -305,8 +306,7 @@ function CouncilChat() {
                     return (
                       <motion.div key={adv.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
                         className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-default ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"}`}>
-                        {adv.avatar ? <img src={adv.avatar} alt={adv.name} className="w-10 h-10 rounded-full object-cover bg-ink-800 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                          : <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-lg`}>{adv.name[0]}</div>}
+                        <Avatar src={adv.avatar} name={adv.name} size="lg" colorClass={AVATAR_COLORS[i % AVATAR_COLORS.length]} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm font-bold text-ink-100 truncate">{adv.name}</span>
@@ -423,8 +423,7 @@ function InvitePicker({ allAdvisors, currentIds, onInvite, inviting }: { allAdvi
               <motion.div key={adv.id} whileTap={{ scale: 0.98 }}
                 onClick={() => setSelected((prev) => { const next = new Set(prev); isSel ? next.delete(adv.id) : next.add(adv.id); return next; })}
                 className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${isSel ? "bg-ancient-900/30 border-ancient-600/50" : "bg-ink-900/50 border-ink-800/40 hover:border-ink-600/50"}`}>
-                {adv.avatar ? <img src={adv.avatar} className="w-9 h-9 rounded-full object-cover bg-ink-800 shrink-0" />
-                  : <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-xs font-bold shrink-0`}>{adv.name[0]}</div>}
+                <Avatar src={adv.avatar} name={adv.name} size="md" colorClass={AVATAR_COLORS[i % AVATAR_COLORS.length]} />
                 <div className="min-w-0 flex-1"><div className="text-sm font-bold text-ink-100 truncate">{adv.name}</div><div className="text-[11px] text-ink-500 truncate">{adv.era} · {adv.title}</div></div>
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isSel ? "border-ancient-500 bg-ancient-500" : "border-ink-600"}`}>
                   {isSel && <div className="w-2 h-2 rounded-full bg-white" />}
