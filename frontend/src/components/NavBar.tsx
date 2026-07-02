@@ -6,10 +6,17 @@ import { getToken, removeToken, getUserInfo } from "@/lib/api";
 
 export default function NavBar() {
   const [username, setUsername] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const info = getUserInfo();
-    if (info) setUsername(info.username);
+    if (info) {
+      setUsername(info.username);
+      setIsAdmin(info.isAdmin);
+      console.log("NavBar: username=" + info.username + " isAdmin=" + info.isAdmin);
+    } else {
+      console.log("NavBar: no token found");
+    }
   }, []);
 
   const handleLogout = () => {
@@ -36,6 +43,11 @@ export default function NavBar() {
               <Link href="/sessions" className="hover:text-ancient-400 transition-colors">
                 我的议事
               </Link>
+              {isAdmin && (
+                <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
+                  管理
+                </Link>
+              )}
               <span className="text-ink-500">{username}</span>
               <button
                 onClick={handleLogout}

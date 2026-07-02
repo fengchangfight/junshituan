@@ -15,7 +15,7 @@ export function removeToken() {
   localStorage.removeItem("junshituan_token");
 }
 
-export function getUserInfo(): { username: string } | null {
+export function getUserInfo(): { username: string; isAdmin: boolean } | null {
   const token = getToken();
   if (!token) return null;
   try {
@@ -24,7 +24,7 @@ export function getUserInfo(): { username: string } | null {
       removeToken();
       return null;
     }
-    return { username: payload.username || "" };
+    return { username: payload.username || "", isAdmin: payload.role === "super_admin" || payload.role === "admin" || !!payload.is_admin };
   } catch {
     return null;
   }
