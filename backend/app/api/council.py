@@ -112,6 +112,7 @@ async def ask_council(
             question=req.question,
             is_resume=is_resume,
             target_advisor_ids=req.target_advisor_ids,
+            use_web_search=req.use_web_search,
         ):
             yield {
                 "event": "message",

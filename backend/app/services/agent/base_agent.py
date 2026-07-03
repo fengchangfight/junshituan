@@ -152,6 +152,8 @@ MAX_TOOL_ROUNDS = 2  # the second round is for the fill response, not tool loops
 # Context vars for request-scoped callbacks (async-safe, survives LangGraph node routing)
 _ctx_tool_callback: contextvars.ContextVar[Optional[Callable[[dict], Awaitable[None]]]] = \
     contextvars.ContextVar("tool_callback", default=None)
+_ctx_use_web_search: contextvars.ContextVar[bool] = \
+    contextvars.ContextVar("use_web_search", default=True)
 
 
 # ── Agent Graph Builder ────────────────────────────────────────────────────
@@ -355,7 +357,8 @@ class AdvisorAgentGraph:
 
         # ── Tool-calling path ────────────────────────────────────────────────
         from app.tools import tool_registry
-        tools = tool_registry.get_schemas()
+        use_web = _ctx_use_web_search.get()
+        tools = tool_registry.get_schemas() if use_web else []
         rounds = state.get("tool_rounds", 0)
         tool_msgs: list[dict] = list(state.get("tool_messages") or [])
 

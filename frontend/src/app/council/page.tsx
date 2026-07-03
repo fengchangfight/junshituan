@@ -80,6 +80,7 @@ function CouncilChat() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [toolActivities, setToolActivities] = useState<Array<{id: string; advisorId: string; advisorName: string; toolName: string; query: string; status: "running"|"done"; ts: number; results?: Array<{title: string; href: string; snippet: string}>}>>([]);
   const [showToolPanel, setShowToolPanel] = useState(true);
+  const [useWebSearch, setUseWebSearch] = useState(true);
 
   useEffect(() => {
     async function init() {
@@ -149,7 +150,7 @@ function CouncilChat() {
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const stream = askCouncil(sessionId, cleanQ, targets.map((t) => t.id));
+      const stream = askCouncil(sessionId, cleanQ, targets.map((t) => t.id), useWebSearch);
       timeout = setTimeout(() => {
         setMessages((prev) =>
           prev.map((m) => (m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
@@ -273,7 +274,7 @@ function CouncilChat() {
     let timeout2: ReturnType<typeof setTimeout> | undefined;
     try {
       let gotContent = false;
-      const stream = askCouncil(sessionId, "请根据之前的讨论继续发言。", [advisor.id]);
+      const stream = askCouncil(sessionId, "请根据之前的讨论继续发言。", [advisor.id], useWebSearch);
       timeout2 = setTimeout(() => {
         setMessages((prev) =>
           prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
@@ -522,6 +523,17 @@ function CouncilChat() {
                   disabled={loading || !!hasStreaming}
                   className="w-full bg-transparent text-ink-100 text-sm placeholder:text-ink-600 focus:outline-none" />
               </div>
+              <button
+                onClick={() => setUseWebSearch(!useWebSearch)}
+                title={useWebSearch ? "已启用网络搜索" : "已禁用网络搜索（更快）"}
+                className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors border ${
+                  useWebSearch
+                    ? "bg-blue-900/20 border-blue-700/40 text-blue-400"
+                    : "bg-ink-800 border-ink-700/40 text-ink-600"
+                }`}
+              >
+                {useWebSearch ? "🌐 联网" : "⚡ 快速"}
+              </button>
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
                 onClick={handleSend} disabled={!input.trim() || loading || !!hasStreaming}
                 className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20">

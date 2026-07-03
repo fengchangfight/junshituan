@@ -148,6 +148,7 @@ class CouncilService:
         question: str,
         is_resume: bool = False,
         target_advisor_ids: list[str] = None,
+        use_web_search: bool = True,
     ):
         """Ask the council a question. Yields SSE events as advisors respond.
 
@@ -278,6 +279,10 @@ class CouncilService:
                                   "query": progress.get("query", ""), "result_count": progress.get("result_count", 0),
                                   "results": progress.get("results", [])},
                     ))
+
+                # Set web search preference for this request
+                from app.services.agent.base_agent import _ctx_use_web_search
+                _ctx_use_web_search.set(use_web_search)
 
                 response = await agent_registry.ask_advisor_streaming(
                     advisor_id, session_id, user_id, enhanced_question,
