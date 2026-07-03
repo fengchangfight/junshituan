@@ -3,11 +3,17 @@
 Extends InMemorySaver (native async support) and syncs to agent_checkpoints table.
 """
 
-import json
+import base64
 from typing import Optional
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.base import CheckpointTuple
+
+
+def _safe_parent_config(config: dict) -> dict:
+    """Keep only thread_id — everything else is non-serializable (callbacks, Runtime objects, etc.)."""
+    thread_id = config.get("configurable", {}).get("thread_id", "")
+    return {"configurable": {"thread_id": thread_id}}
 
 
 class PostgresCheckpointer(InMemorySaver):
@@ -46,8 +52,12 @@ class PostgresCheckpointer(InMemorySaver):
                 if data is None:
                     return None
 
-                # Deserialize stored state and load into InMemory
-                checkpoint = self.serde.loads_typed(data.get("checkpoint", "{}"))
+                # Deserialize stored state
+                raw = data.get("checkpoint")
+                if isinstance(raw, list) and len(raw) == 2 and raw[0] == "msgpack":
+                    checkpoint = self.serde.loads_typed((raw[0], base64.b64decode(raw[1])))
+                else:
+                    checkpoint = self.serde.loads_typed(raw if raw else "{}")
                 metadata = data.get("metadata", {})
 
                 config_for_put = {"configurable": config["configurable"]}
@@ -57,7 +67,6 @@ class PostgresCheckpointer(InMemorySaver):
                     metadata,
                     {},  # new_versions
                 )
-                # Lockstep: if we're going to put anyway, just return it directly
                 return CheckpointTuple(
                     config=config,
                     checkpoint=checkpoint,
@@ -79,10 +88,13 @@ class PostgresCheckpointer(InMemorySaver):
 
         # Sync to DB (persistent path)
         try:
+            raw = self.serde.dumps_typed(checkpoint)
+            # Encode bytes as base64 for JSON storage
+            safe_checkpoint = [raw[0], base64.b64encode(raw[1]).decode("ascii")]
             data = {
-                "checkpoint": self.serde.dumps_typed(checkpoint),
+                "checkpoint": safe_checkpoint,
                 "metadata": metadata,
-                "parent_config": config,
+                "parent_config": _safe_parent_config(config),
             }
             from app.services.memory.session_store import session_store
             db_session = await self._get_db()

@@ -48,7 +48,8 @@ export default function ChatBubble({
 
   const isUser = message.role === "user";
   const isThinking = message.isStreaming && message.content === "";
-  const isPartial = message.isStreaming && message.content !== "";
+  const isToolProgress = message.isStreaming && (message.content.startsWith("📚") || message.content.startsWith("📖"));
+  const isPartial = message.isStreaming && message.content !== "" && !isToolProgress;
 
   if (isUser) {
     return (
@@ -109,10 +110,25 @@ export default function ChatBubble({
         )}
 
         <div
-          className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed bg-ink-900/80 border border-ink-800/40 text-ink-200 shadow-sm`}
+          className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+            isToolProgress
+              ? "bg-blue-900/20 border border-blue-800/30 text-blue-300"
+              : "bg-ink-900/80 border border-ink-800/40 text-ink-200"
+          }`}
         >
           {isThinking ? (
             <ThinkingDots />
+          ) : isToolProgress ? (
+            <p className="text-xs flex items-center gap-2">
+              <motion.span
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                className="inline-block"
+              >
+                🔍
+              </motion.span>
+              {message.content}
+            </p>
           ) : (
             <p className="whitespace-pre-wrap break-words">
               {message.content}

@@ -266,6 +266,15 @@ class CouncilService:
 
                 # Streaming agent: each LLM token → queue → SSE → frontend in real time
                 t_stream = time.perf_counter()
+
+                async def _on_tool_progress(progress):
+                    await queue.put(AskEvent(
+                        advisor_id=advisor_id, advisor_name=advisor_name, content="", done=False,
+                        metadata={"type": "tool_progress", "action": progress.get("action"), "tool_name": progress.get("tool_name"),
+                                  "query": progress.get("query", ""), "result_count": progress.get("result_count", 0),
+                                  "results": progress.get("results", [])},
+                    ))
+
                 response = await agent_registry.ask_advisor_streaming(
                     advisor_id, session_id, user_id, enhanced_question,
                     is_resume=is_resume,
@@ -273,6 +282,7 @@ class CouncilService:
                     on_token=lambda token, _name=advisor_name, _aid=advisor_id: queue.put(
                         AskEvent(advisor_id=_aid, advisor_name=_name, content=token, done=False)
                     ),
+                    on_tool_progress=_on_tool_progress,
                 )
                 print(f"[DEBUG council] ask_one got response from {advisor_id}: len={len(response)} streamed in {(time.perf_counter() - t_stream)*1000:.0f}ms", flush=True)
 

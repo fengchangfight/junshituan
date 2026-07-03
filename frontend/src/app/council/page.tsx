@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
-import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle } from "lucide-react";
+import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle } from "lucide-react";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
 import Avatar from "@/components/ChatRoom/Avatar";
 
@@ -78,6 +78,8 @@ function CouncilChat() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviting, setInviting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [toolActivities, setToolActivities] = useState<Array<{id: string; advisorId: string; advisorName: string; toolName: string; query: string; status: "running"|"done"; ts: number; results?: Array<{title: string; href: string; snippet: string}>}>>([]);
+  const [showToolPanel, setShowToolPanel] = useState(true);
 
   useEffect(() => {
     async function init() {
@@ -159,7 +161,43 @@ function CouncilChat() {
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
-        if (event.content || event.done) {
+        if (event.metadata?.type === "tool_progress" && event.metadata?.tool_name === "web_search") {
+          // Update tool activity panel (right side)
+          const tp = event.metadata;
+          const actId = `${event.advisor_id}-${tp.query}`;
+          setToolActivities((prev) => {
+            if (tp.action === "tool_start") {
+              return [...prev.filter((a) => a.id !== actId), {
+                id: actId, advisorId: event.advisor_id, advisorName: event.advisor_name || "",
+                toolName: tp.tool_name, query: tp.query || "", status: "running" as const, ts: Date.now(),
+              }];
+            } else {
+              return prev.map((a) => a.id === actId ? { ...a, status: "done" as const, results: tp.results || [] } : a);
+            }
+          });
+          // Also show brief status in chat bubble
+          const statusText = tp.action === "tool_start"
+            ? `📚 正在搜集汇总资料：${tp.query || "..."}`
+            : `📖 资料汇总完成：找到 ${tp.result_count ?? "?"} 条结果`;
+          setReplyingId(event.advisor_id);
+          setMessages((prev) => {
+            const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
+            let msgs = prev;
+            if (!hasPending && event.advisor_id !== "system") {
+              msgs = [...prev, {
+                id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                advisorId: event.advisor_id, advisorName: event.advisor_name || "",
+                content: statusText, timestamp: Date.now(), isStreaming: true,
+              }];
+            }
+            return msgs.map((m) => {
+              if (m.advisorId === event.advisor_id && m.isStreaming) {
+                return { ...m, content: statusText };
+              }
+              return m;
+            });
+          });
+        } else if (event.content || event.done) {
           clearTimeout(timeout);
           if (event.done) {
             setReplyingId((prev) => prev === event.advisor_id ? null : prev);
@@ -178,8 +216,10 @@ function CouncilChat() {
             }
             return msgs.map((m) => {
               if (m.advisorId === event.advisor_id && m.isStreaming) {
+                const isToolStatus = m.content.startsWith("📚") || m.content.startsWith("📖");
                 return {
-                  ...m, content: m.content + (event.content || ""),
+                  ...m,
+                  content: isToolStatus ? (event.content || "") : m.content + (event.content || ""),
                   advisorName: event.advisor_name || m.advisorName,
                   isStreaming: !event.done,
                 };
@@ -244,7 +284,30 @@ function CouncilChat() {
         if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
           setBudget(event.metadata.budget);
         }
-        if (event.content || event.done) {
+        if (event.metadata?.type === "tool_progress" && event.metadata?.tool_name === "web_search") {
+          const tp = event.metadata;
+          const actId = `${event.advisor_id}-${tp.query}`;
+          setToolActivities((prev) => {
+            if (tp.action === "tool_start") {
+              return [...prev.filter((a) => a.id !== actId), {
+                id: actId, advisorId: event.advisor_id, advisorName: event.advisor_name || "",
+                toolName: tp.tool_name, query: tp.query || "", status: "running" as const, ts: Date.now(),
+              }];
+            } else {
+              return prev.map((a) => a.id === actId ? { ...a, status: "done" as const, results: tp.results || [] } : a);
+            }
+          });
+          const statusText = tp.action === "tool_start"
+            ? `📚 正在搜集汇总资料：${tp.query || "..."}`
+            : `📖 资料汇总完成：找到 ${tp.result_count ?? "?"} 条结果`;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === pendingMsg.id) return { ...m, content: statusText };
+              if (m.advisorId === event.advisor_id && m.isStreaming) return { ...m, content: statusText };
+              return m;
+            })
+          );
+        } else if (event.content || event.done) {
           clearTimeout(timeout2);
           if (!gotContent && event.content) {
             gotContent = true;
@@ -259,8 +322,10 @@ function CouncilChat() {
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.advisorId === event.advisor_id && m.isStreaming) {
+                  const isToolStatus = m.content.startsWith("📚") || m.content.startsWith("📖");
                   return {
-                    ...m, content: m.content + (event.content || ""),
+                    ...m,
+                    content: isToolStatus ? (event.content || "") : m.content + (event.content || ""),
                     advisorName: event.advisor_name || m.advisorName,
                     isStreaming: !event.done,
                   };
@@ -329,6 +394,21 @@ function CouncilChat() {
           </div>
           <button onClick={() => setShowSidebar(!showSidebar)} className="w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors">
             {showSidebar ? <PanelRightClose size={18} className="text-ink-400" /> : <PanelRightOpen size={18} className="text-ink-400" />}
+          </button>
+          <button onClick={() => setShowToolPanel(!showToolPanel)} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative ${
+            toolActivities.some((a) => a.status === "running") ? "bg-blue-900/30 text-blue-400" :
+            toolActivities.length > 0 ? "text-ink-300 hover:bg-ink-800/50 hover:text-ink-200" :
+            "text-ink-500 hover:bg-ink-800/50 hover:text-ink-400"
+          }`}>
+            <motion.div
+              animate={toolActivities.some((a) => a.status === "running") ? { rotate: 360 } : {}}
+              transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+            >
+              <Wrench size={16} />
+            </motion.div>
+            {toolActivities.some((a) => a.status === "running") && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-400 rounded-full animate-pulse" />
+            )}
           </button>
         </div>
       </div>
@@ -449,6 +529,79 @@ function CouncilChat() {
             </div>
           </div>
         </div>
+
+        {/* ── Tool Activity Panel (right side) ── */}
+        <AnimatePresence>
+          {showToolPanel && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 260, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              className="shrink-0 border-l border-ink-800/60 bg-ink-900/30 overflow-y-auto scrollbar-thin"
+            >
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-ink-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-[10px]">⚙️</span> 工具调用
+                  </h3>
+                  <button onClick={() => setShowToolPanel(false)} className="text-ink-600 hover:text-ink-400">
+                    <X size={12} />
+                  </button>
+                </div>
+                {toolActivities.length === 0 ? (
+                  <p className="text-xs text-ink-600 italic py-4 text-center">
+                    暂无工具调用记录
+                  </p>
+                ) : (
+                <div className="space-y-1.5">
+                  {toolActivities.slice(-20).reverse().map((act) => (
+                    <div key={act.id} className="relative group">
+                      <div className={`p-2 rounded-lg text-xs border transition-colors cursor-default ${
+                        act.status === "running"
+                          ? "bg-blue-900/15 border-blue-800/30"
+                          : "bg-ink-900/30 border-ink-800/30 hover:border-ink-600/50"
+                      }`}>
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          {act.status === "running" ? (
+                            <Loader2 size={10} className="text-blue-400 animate-spin shrink-0" />
+                          ) : (
+                            <CheckCircle size={10} className="text-emerald-400 shrink-0" />
+                          )}
+                          <span className="text-ink-300 font-medium truncate">{act.advisorName}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-ink-800 text-ink-500 font-mono shrink-0">
+                            {act.toolName === "web_search" ? "搜索" : act.toolName}
+                          </span>
+                          <span className="text-ink-500 truncate">{act.query}</span>
+                        </div>
+                      </div>
+                      {/* Hover tooltip — stays open for click interaction */}
+                      {act.results && act.results.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full z-50 pt-1
+                                        opacity-0 pointer-events-none
+                                        group-hover:opacity-100 group-hover:pointer-events-auto
+                                        transition-opacity duration-150">
+                          <div className="bg-ink-800 border border-ink-600 rounded-lg p-2 shadow-xl max-h-48 overflow-y-auto">
+                            {act.results.map((r, i) => (
+                              <a key={i} href={r.href} target="_blank" rel="noopener noreferrer"
+                                className="block p-1.5 rounded hover:bg-ink-700/50 transition-colors mb-0.5 last:mb-0">
+                                <div className="text-[11px] text-ink-200 font-medium truncate">{r.title}</div>
+                                <div className="text-[10px] text-ink-500 truncate">{r.href}</div>
+                                {r.snippet && <div className="text-[10px] text-ink-600 mt-0.5 line-clamp-2">{r.snippet}</div>}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Invite modal ── */}

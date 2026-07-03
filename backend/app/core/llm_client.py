@@ -100,3 +100,123 @@ async def chat(
         temperature=temperature,
     )
     return response.choices[0].message.content or ""
+
+
+@dataclass
+class ToolCallResult:
+    """Result from a chat completion that may include tool calls."""
+
+    content: str | None = None
+    tool_calls: list[dict] | None = None
+    """Each tool_call: {"id": str, "name": str, "arguments": dict}"""
+
+
+async def chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    temperature: float = 0.7,
+    model: str | None = None,
+) -> ToolCallResult:
+    """Chat completion with tool/function calling support.
+
+    Returns either a text response or a list of tool calls (not both).
+    Caller should:
+      - If tool_calls: execute them, append results as messages, call again.
+      - If content: the final response is ready.
+    """
+    response = await _get_client().chat.completions.create(
+        model=model or settings.llm_model,
+        messages=messages,
+        tools=tools,
+        temperature=temperature,
+    )
+    msg = response.choices[0].message
+
+    if msg.tool_calls:
+        tool_calls = []
+        for tc in msg.tool_calls:
+            import json as _json
+            try:
+                args = _json.loads(tc.function.arguments)
+            except _json.JSONDecodeError:
+                args = {}
+            tool_calls.append({
+                "id": tc.id,
+                "name": tc.function.name,
+                "arguments": args,
+            })
+        return ToolCallResult(tool_calls=tool_calls)
+
+    return ToolCallResult(content=msg.content or "")
+
+
+async def chat_with_tools_stream(
+    messages: list[dict],
+    tools: list[dict],
+    temperature: float = 0.7,
+    model: str | None = None,
+    token_cb=None,
+) -> ToolCallResult:
+    """Streaming chat with tool/function calling support.
+
+    Streams text tokens via token_cb in real-time. When the model emits
+    tool_calls, those are accumulated across chunks and returned without
+    streaming any text (tool calls precede content).
+    """
+    stream = await _get_client().chat.completions.create(
+        model=model or settings.llm_model,
+        messages=messages,
+        tools=tools,
+        temperature=temperature,
+        stream=True,
+    )
+
+    tool_calls_acc: dict[int, dict] = {}
+    content_parts: list[str] = []
+    has_tool_calls = False
+
+    async for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+
+        if delta.tool_calls:
+            has_tool_calls = True
+            for tc_delta in delta.tool_calls:
+                idx = tc_delta.index
+                if idx not in tool_calls_acc:
+                    tool_calls_acc[idx] = {
+                        "id": tc_delta.id or "",
+                        "function": {"name": "", "arguments": ""},
+                    }
+                acc = tool_calls_acc[idx]
+                if tc_delta.id:
+                    acc["id"] = tc_delta.id
+                if tc_delta.function:
+                    if tc_delta.function.name:
+                        acc["function"]["name"] += tc_delta.function.name
+                    if tc_delta.function.arguments:
+                        acc["function"]["arguments"] += tc_delta.function.arguments
+
+        if delta.content:
+            content_parts.append(delta.content)
+            if token_cb and not has_tool_calls:
+                await token_cb(delta.content)
+
+    if has_tool_calls and tool_calls_acc:
+        import json as _json
+        tool_calls = []
+        for idx in sorted(tool_calls_acc.keys()):
+            tc = tool_calls_acc[idx]
+            try:
+                args = _json.loads(tc["function"]["arguments"])
+            except _json.JSONDecodeError:
+                args = {}
+            tool_calls.append({
+                "id": tc["id"],
+                "name": tc["function"]["name"],
+                "arguments": args,
+            })
+        return ToolCallResult(tool_calls=tool_calls)
+
+    return ToolCallResult(content="".join(content_parts))

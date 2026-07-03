@@ -84,19 +84,22 @@ class AgentRegistry:
         self, persona_id: str, session_id: str, user_id: str,
         question: str, is_resume: bool,
         on_token: Callable[[str], Awaitable[None]],
+        on_tool_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         history: Optional[list[dict]] = None,
     ) -> str:
         """Ask advisor with per-token streaming callback.
 
         on_token is called for every LLM output token as it arrives.
+        on_tool_progress: called when tools are being executed.
         history: conversation history for context when no checkpoint exists.
         """
-        return await self._ask_impl(persona_id, session_id, user_id, question, is_resume, on_token, history)
+        return await self._ask_impl(persona_id, session_id, user_id, question, is_resume, on_token, on_tool_progress, history)
 
     async def _ask_impl(
         self, persona_id: str, session_id: str, user_id: str,
         question: str, is_resume: bool,
         on_token: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_tool_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         history: Optional[list[dict]] = None,
     ) -> str:
         print(f"[DEBUG registry] ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume} streaming={on_token is not None} history_len={len(history) if history else 0}", flush=True)
@@ -107,9 +110,9 @@ class AgentRegistry:
         print(f"[DEBUG registry] calling agent.{'resume' if is_resume else 'run'}...", flush=True)
         t0 = time.perf_counter()
         if is_resume:
-            result = await agent.resume(session_id, user_id, question, on_token=on_token, history=history)
+            result = await agent.resume(session_id, user_id, question, on_token=on_token, on_tool_progress=on_tool_progress, history=history)
         else:
-            result = await agent.run(session_id, user_id, question, on_token=on_token, history=history)
+            result = await agent.run(session_id, user_id, question, on_token=on_token, on_tool_progress=on_tool_progress, history=history)
         print(f"[TIMING registry] ask_advisor took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
         return result
 
