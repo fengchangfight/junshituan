@@ -87,6 +87,9 @@ export default function AdvisorKBPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +107,45 @@ export default function AdvisorKBPage() {
   const [role, setRole] = useState("user");
   const isViewer = role === "viewer";
   const isAdmin = role === "super_admin" || role === "admin";
+
+  // Structured skill editing
+  const [skillForm, setSkillForm] = useState<Record<string, any>>({});
+  const [skillFormReady, setSkillFormReady] = useState(false);
+  const [savingSkill, setSavingSkill] = useState(false);
+
+  const initSkillForm = (skill: Record<string, any> | undefined) => {
+    setSkillForm({
+      mental_models: (skill?.mental_models || []).map((m: any) => ({ ...m })),
+      heuristics: (skill?.heuristics || []).map((h: any) => ({ ...h })),
+      expression: { ...(skill?.expression || { sentence_patterns: [], tone: "", rhythm: "", certainty: "", vocabulary: { preferred: [], avoided: [] } }) },
+      anti_patterns: (skill?.anti_patterns || []).map((a: any) => ({ ...a })),
+      limitations: [...(skill?.limitations || [])],
+    });
+    setSkillFormReady(true);
+  };
+
+  const saveSkillStructured = async () => {
+    setSavingSkill(true); setError("");
+    try {
+      const merged = {
+        ...(advisor?.skill_config || {}),
+        mental_models: skillForm.mental_models,
+        heuristics: skillForm.heuristics,
+        expression: skillForm.expression,
+        anti_patterns: skillForm.anti_patterns,
+        limitations: skillForm.limitations,
+      };
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ skill_config: merged }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "保存失败"); }
+      setSuccessMsg("认知配置已保存");
+      fetchAdvisor();
+    } catch (e: any) { setError(e.message); }
+    finally { setSavingSkill(false); }
+  };
 
   useEffect(() => {
     const t = localStorage.getItem("junshituan_token");
@@ -133,6 +175,7 @@ export default function AdvisorKBPage() {
       .then((r) => r.json())
       .then((data: AdvisorDetail) => {
         setAdvisor(data);
+        initSkillForm(data.skill_config);
         setMetaForm({
           name: data.name,
           title: data.title,
@@ -376,18 +419,22 @@ export default function AdvisorKBPage() {
 
   const handleEnrich = async () => {
     setEnriching(true);
-    setError("");
+    setError(""); setSuccessMsg("");
     try {
       const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}/enrich`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "充实失败");
+        throw new Error(data.detail || "充实失败");
       }
-      setSuccessMsg("配置已由 AI 充实完成");
-      fetchAdvisor();
+      if (data.status === "insufficient_knowledge") {
+        setError(`${data.message}\n\n建议补充：${(data.suggested_fields || []).join("、")}`);
+      } else {
+        setSuccessMsg("配置已由 AI 充实完成");
+        fetchAdvisor();
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -397,22 +444,43 @@ export default function AdvisorKBPage() {
 
   const handleGenerateSkill = async () => {
     setGeneratingSkill(true);
-    setError("");
+    setError(""); setSuccessMsg("");
     try {
       const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}/skill/generate`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "生成失败");
+        throw new Error(data.detail || "生成失败");
       }
-      setSuccessMsg("认知操作系统已由 AI 生成");
-      fetchAdvisor();
+      if (data.status === "insufficient_knowledge") {
+        setError(`${data.message}\n\n建议补充：${(data.suggested_fields || []).join("、")}`);
+      } else {
+        setSuccessMsg("认知操作系统已由 AI 生成");
+        fetchAdvisor();
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
       setGeneratingSkill(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true); setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "删除失败");
+      router.push("/admin/advisors");
+    } catch (e: any) {
+      setError(e.message);
+      setShowDeleteConfirm(false);
+      setDeleting(false);
     }
   };
 
@@ -566,7 +634,7 @@ export default function AdvisorKBPage() {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-700/50 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">
+        <div className="bg-red-900/30 border border-red-700/50 text-red-400 text-sm rounded-xl px-4 py-3 mb-4 whitespace-pre-line">
           {error}
         </div>
       )}
@@ -944,7 +1012,96 @@ export default function AdvisorKBPage() {
         </div>
       </div>
 
-      {/* ── 能力预览弹窗 ──────────────────────────────────────────── */}
+      {/* ── 危险区域 ──────────────────────────────────────────────── */}
+      {!isViewer && (
+        <div className="mt-8 p-4 rounded-xl border border-red-800/30 bg-red-900/10">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-bold text-red-400 flex items-center gap-2">
+                <Trash2 size={16} /> 危险区域
+              </h4>
+              <p className="text-xs text-ink-500 mt-1 max-w-lg">
+                删除军师将同时清除其知识文档和向量索引。会话记录会保留，但该军师在历史会话中将显示为"已删除"。
+              </p>
+            </div>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 rounded-lg bg-red-600/20 border border-red-600/40 text-red-400 text-sm font-medium hover:bg-red-600/30 transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              <Trash2 size={16} /> 删除军师
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 删除确认弹窗 ── */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setShowDeleteConfirm(false)}>
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-ink-900 border border-red-800/50 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center">
+                <Trash2 size={20} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-red-400">确认删除「{advisor?.name}」</h3>
+                <p className="text-xs text-ink-500 mt-0.5">此操作不可撤销</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-4 text-sm">
+              <div className="p-3 rounded-xl bg-red-900/15 border border-red-800/20">
+                <p className="text-red-400 font-medium text-xs mb-2">以下内容将被永久删除：</p>
+                <ul className="space-y-1 text-xs text-ink-300">
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-red-400">•</span> 军师「{advisor?.name}」的基本信息和配置
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-red-400">•</span> {advisor?.documents?.length || 0} 个知识文档
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-red-400">•</span> {advisor?.kb_doc_count || 0} 条向量索引
+                  </li>
+                </ul>
+              </div>
+              <div className="p-3 rounded-xl bg-ink-800/50 border border-ink-700/50">
+                <p className="text-ink-400 font-medium text-xs mb-2">以下内容将保留不变：</p>
+                <ul className="space-y-1 text-xs text-ink-400">
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-emerald-400">•</span> 历史会话记录和聊天消息
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-emerald-400">•</span> 该军师在会话中显示为"已删除"
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-300 text-sm hover:text-ink-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                确认删除
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ── 能力配置弹窗 ──────────────────────────────────────────── */}
       {showConfig && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center pt-10 pb-10 overflow-auto bg-black/70"
@@ -987,6 +1144,18 @@ export default function AdvisorKBPage() {
             </div>
 
             <div className="p-6 space-y-6">
+              {/* ── 消息提示 ── */}
+              {error && (
+                <div className="bg-red-900/30 border border-red-700/50 text-red-400 text-sm rounded-xl px-4 py-3 whitespace-pre-line">
+                  {error}
+                </div>
+              )}
+              {successMsg && (
+                <div className="bg-emerald-900/30 border border-emerald-700/50 text-emerald-400 text-sm rounded-xl px-4 py-3">
+                  {successMsg}
+                </div>
+              )}
+
               {/* ── AI 操作按钮 ── */}
               {!isViewer && (
               <div className="flex gap-3">
@@ -1228,145 +1397,279 @@ export default function AdvisorKBPage() {
 
               {/* ── 认知操作系统 (Skill) ── */}
               <Section title="认知操作系统" icon="⚙️">
-                {editingSkillJson ? (
-                  <div className="space-y-3">
-                    <textarea
-                      value={skillJsonText}
-                      onChange={(e) => setSkillJsonText(e.target.value)}
-                      rows={20}
-                      className="w-full bg-ink-950 border border-ink-700 rounded-xl px-4 py-3 text-xs text-ink-100 font-mono focus:outline-none focus:border-purple-600 resize-y"
-                      spellCheck={false}
-                    />
-                    <div className="flex gap-2">
-                      <button onClick={saveSkillJson} disabled={savingConfig}
-                        className="px-4 py-1.5 rounded-lg bg-purple-600/30 border border-purple-600/50 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50">
-                        {savingConfig ? <Loader2 size={12} className="animate-spin inline mr-1" /> : null}
-                        保存 JSON
-                      </button>
-                      <button onClick={() => { setEditingSkillJson(false); }}
-                        className="px-4 py-1.5 rounded-lg bg-ink-800 text-ink-400 text-xs hover:text-ink-200">
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                ) : advisor.skill_config ? (
-                  <div>
-                    {!isViewer && (
-                    <button onClick={() => { setSkillJsonText(JSON.stringify(advisor.skill_config, null, 2)); setEditingSkillJson(true); }}
-                      className="mb-3 px-3 py-1 rounded-lg bg-ink-800 border border-ink-700 text-ink-400 text-xs hover:text-ink-200 hover:border-ink-600 transition-colors">
-                      编辑 JSON
-                    </button>
-                    )}
-                    <div className="space-y-4">
-                      {/* ... existing skill display ... */}
-                    {advisor.skill_config.workflow?.steps && (
-                      <div>
-                        <span className="text-xs text-amber-400 font-medium block mb-2">回答工作流</span>
-                        <div className="space-y-1.5">
-                          {advisor.skill_config.workflow.steps.map((s: any, i: number) => (
-                            <div key={i} className="flex items-start gap-2 text-sm">
-                              <span className="px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 text-[10px] font-mono mt-0.5">
-                                {i + 1}
-                              </span>
-                              <div>
-                                <span className="text-ink-200 font-medium">{s.step}</span>
-                                <span className="text-ink-500 ml-2 text-xs">{s.description}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {advisor.skill_config.mental_models && advisor.skill_config.mental_models.length > 0 && (
-                      <div>
-                        <span className="text-xs text-amber-400 font-medium block mb-2">
-                          心智模型 ({advisor.skill_config.mental_models.length})
-                        </span>
-                        <div className="space-y-2">
-                          {advisor.skill_config.mental_models.map((m: any, i: number) => (
-                            <div key={i} className="p-3 rounded-xl bg-ink-900/50 border border-ink-800/50">
-                              <h5 className="text-sm font-bold text-ink-100">{m.name}</h5>
-                              <p className="text-xs text-ink-400 mt-0.5">{m.summary}</p>
-                              {m.application && (
-                                <p className="text-xs text-emerald-400 mt-1">
-                                  <span className="text-ink-600">应用：</span>{m.application}
-                                </p>
-                              )}
-                              {m.limitation && (
-                                <p className="text-xs text-red-400 mt-0.5">
-                                  <span className="text-ink-600">局限：</span>{m.limitation}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {advisor.skill_config.heuristics && advisor.skill_config.heuristics.length > 0 && (
-                      <div>
-                        <span className="text-xs text-amber-400 font-medium block mb-2">
-                          决策启发式 ({advisor.skill_config.heuristics.length})
-                        </span>
-                        <div className="space-y-1.5">
-                          {advisor.skill_config.heuristics.map((h: any, i: number) => (
-                            <div key={i} className="text-sm text-ink-200">
-                              <span className="text-ancient-400">▸ </span>
-                              <span className="font-medium">{h.name}</span>
-                              <span className="text-ink-500">：{h.trigger} → {h.action}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {advisor.skill_config.expression && (
-                      <div className="space-y-1.5">
-                        <span className="text-xs text-amber-400 font-medium block">表达 DNA</span>
-                        {advisor.skill_config.expression.tone && <KV label="语气" value={advisor.skill_config.expression.tone} />}
-                        {advisor.skill_config.expression.rhythm && <KV label="节奏" value={advisor.skill_config.expression.rhythm} />}
-                        {advisor.skill_config.expression.certainty && <KV label="确定性" value={advisor.skill_config.expression.certainty} />}
-                        {advisor.skill_config.expression.sentence_patterns && (
-                          <div>
-                            <span className="text-[10px] text-ink-500">句式</span>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {advisor.skill_config.expression.sentence_patterns.map((p: string, i: number) => (
-                                <code key={i} className="px-2 py-0.5 rounded bg-ink-800 text-ink-300 text-xs font-mono">
-                                  {p}
-                                </code>
-                              ))}
+                {!skillFormReady ? (
+                  <EmptyHint text="加载中..." />
+                ) : (
+                  <div className="space-y-5">
+                    {/* Admin-only raw JSON toggle */}
+                    {isAdmin && (
+                      <div className="flex items-center gap-2">
+                        {editingSkillJson ? (
+                          <div className="flex-1 space-y-3">
+                            <textarea
+                              value={skillJsonText}
+                              onChange={(e) => setSkillJsonText(e.target.value)}
+                              rows={16}
+                              className="w-full bg-ink-950 border border-ink-700 rounded-xl px-4 py-3 text-xs text-ink-100 font-mono focus:outline-none focus:border-purple-600 resize-y"
+                              spellCheck={false}
+                            />
+                            <div className="flex gap-2">
+                              <button onClick={saveSkillJson} disabled={savingConfig}
+                                className="px-4 py-1.5 rounded-lg bg-purple-600/30 border border-purple-600/50 text-purple-400 text-xs font-medium hover:bg-purple-600/40 disabled:opacity-50">
+                                {savingConfig ? <Loader2 size={12} className="animate-spin inline mr-1" /> : null}保存 JSON
+                              </button>
+                              <button onClick={() => setEditingSkillJson(false)}
+                                className="px-4 py-1.5 rounded-lg bg-ink-800 text-ink-400 text-xs hover:text-ink-200">取消</button>
                             </div>
                           </div>
+                        ) : (
+                          <button
+                            onClick={() => { setSkillJsonText(JSON.stringify(advisor?.skill_config || {}, null, 2)); setEditingSkillJson(true); }}
+                            className="px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-500 text-xs hover:text-ink-300 transition-colors"
+                          >
+                            编辑原始 JSON
+                          </button>
+                        )}
+                        {!editingSkillJson && (
+                          <button onClick={saveSkillStructured} disabled={savingSkill || isViewer}
+                            className="px-4 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 text-xs font-medium hover:bg-emerald-600/30 disabled:opacity-40 flex items-center gap-1">
+                            {savingSkill ? <Loader2 size={12} className="animate-spin" /> : null}保存配置
+                          </button>
                         )}
                       </div>
                     )}
-                    {advisor.skill_config.anti_patterns && advisor.skill_config.anti_patterns.length > 0 && (
-                      <div>
-                        <span className="text-xs text-red-400 font-medium block mb-2">
-                          反例黑名单 ({advisor.skill_config.anti_patterns.length})
+
+                    {/* ── 心智模型 ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-amber-400 font-medium">
+                          心智模型 ({skillForm.mental_models?.length || 0})
                         </span>
-                        <div className="space-y-1">
-                          {advisor.skill_config.anti_patterns.map((ap: any, i: number) => (
-                            <div key={i} className="text-sm">
-                              <span className="text-red-400">❌ {ap.pattern}</span>
-                              {ap.fix && <span className="text-emerald-400 ml-2">→ ✅ {ap.fix}</span>}
+                        {!isViewer && (
+                          <button onClick={() => {
+                            setSkillForm((prev: any) => ({ ...prev, mental_models: [...(prev.mental_models || []), { name: "", summary: "", application: "", limitation: "" }] }));
+                          }} className="text-xs text-ancient-400 hover:text-ancient-300">+ 添加</button>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {(skillForm.mental_models || []).map((m: any, i: number) => (
+                          <div key={i} className="p-3 rounded-xl bg-ink-900/50 border border-ink-800/50">
+                            <div className="flex items-center justify-between mb-1.5">
+                              {isViewer ? (
+                                <h5 className="text-sm font-bold text-ink-100">{m.name || "（未命名）"}</h5>
+                              ) : (
+                                <input value={m.name || ""} placeholder="模型名称"
+                                  onChange={(e) => { const n = [...skillForm.mental_models]; n[i] = { ...n[i], name: e.target.value }; setSkillForm((prev: any) => ({ ...prev, mental_models: n })); }}
+                                  className="flex-1 bg-transparent border-b border-ink-700 text-sm font-bold text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-500" />
+                              )}
+                              {!isViewer && (
+                                <button onClick={() => {
+                                  setSkillForm((prev: any) => ({ ...prev, mental_models: prev.mental_models.filter((_: any, j: number) => j !== i) }));
+                                }} className="text-ink-600 hover:text-red-400 text-xs ml-2">✕</button>
+                              )}
                             </div>
-                          ))}
-                        </div>
+                            {isViewer ? (
+                              <>
+                                {m.summary && <p className="text-xs text-ink-400 mt-0.5">{m.summary}</p>}
+                                {m.application && <p className="text-xs text-emerald-400 mt-1"><span className="text-ink-600">应用：</span>{m.application}</p>}
+                                {m.limitation && <p className="text-xs text-red-400 mt-0.5"><span className="text-ink-600">局限：</span>{m.limitation}</p>}
+                              </>
+                            ) : (
+                              <div className="space-y-1.5 mt-2">
+                                <input value={m.summary || ""} placeholder="一句话描述这个思维模式"
+                                  onChange={(e) => { const n = [...skillForm.mental_models]; n[i] = { ...n[i], summary: e.target.value }; setSkillForm((prev: any) => ({ ...prev, mental_models: n })); }}
+                                  className="w-full bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-ink-700" />
+                                <input value={m.application || ""} placeholder="如何应用？"
+                                  onChange={(e) => { const n = [...skillForm.mental_models]; n[i] = { ...n[i], application: e.target.value }; setSkillForm((prev: any) => ({ ...prev, mental_models: n })); }}
+                                  className="w-full bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-emerald-300 placeholder-ink-600 focus:outline-none focus:border-ink-700" />
+                                <input value={m.limitation || ""} placeholder="局限是什么？"
+                                  onChange={(e) => { const n = [...skillForm.mental_models]; n[i] = { ...n[i], limitation: e.target.value }; setSkillForm((prev: any) => ({ ...prev, mental_models: n })); }}
+                                  className="w-full bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-red-300 placeholder-ink-600 focus:outline-none focus:border-ink-700" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {(!skillForm.mental_models || skillForm.mental_models.length === 0) && (
+                          <p className="text-xs text-ink-600 italic py-2">如：第一性原理、二阶思维、系统思考...</p>
+                        )}
                       </div>
-                    )}
-                    {advisor.skill_config.limitations && advisor.skill_config.limitations.length > 0 && (
-                      <div>
-                        <span className="text-xs text-ink-400 font-medium block mb-2">诚实边界</span>
-                        <ul className="space-y-0.5">
-                          {advisor.skill_config.limitations.map((l: string, i: number) => (
-                            <li key={i} className="text-xs text-ink-400">· {l}</li>
-                          ))}
-                        </ul>
+                    </div>
+
+                    {/* ── 决策启发式 ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-amber-400 font-medium">
+                          决策启发式 ({skillForm.heuristics?.length || 0})
+                        </span>
+                        {!isViewer && (
+                          <button onClick={() => {
+                            setSkillForm((prev: any) => ({ ...prev, heuristics: [...(prev.heuristics || []), { name: "", trigger: "", action: "" }] }));
+                          }} className="text-xs text-ancient-400 hover:text-ancient-300">+ 添加</button>
+                        )}
                       </div>
+                      <div className="space-y-1.5">
+                        {(skillForm.heuristics || []).map((h: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-sm group">
+                            {isViewer ? (
+                              <>
+                                <span className="text-ancient-400">▸ </span>
+                                <span className="font-medium text-ink-200">{h.name || "未命名"}</span>
+                                <span className="text-ink-500">：{h.trigger} → {h.action}</span>
+                              </>
+                            ) : (
+                              <div className="flex-1 flex items-center gap-2 flex-wrap">
+                                <input value={h.name || ""} placeholder="名称"
+                                  onChange={(e) => { const n = [...skillForm.heuristics]; n[i] = { ...n[i], name: e.target.value }; setSkillForm((prev: any) => ({ ...prev, heuristics: n })); }}
+                                  className="w-24 bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-100 placeholder-ink-600 focus:outline-none focus:border-amber-600/50" />
+                                <span className="text-ink-600 text-xs">触发</span>
+                                <input value={h.trigger || ""} placeholder="场景"
+                                  onChange={(e) => { const n = [...skillForm.heuristics]; n[i] = { ...n[i], trigger: e.target.value }; setSkillForm((prev: any) => ({ ...prev, heuristics: n })); }}
+                                  className="flex-1 min-w-[80px] bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-amber-600/50" />
+                                <span className="text-ink-600 text-xs">→</span>
+                                <input value={h.action || ""} placeholder="行动"
+                                  onChange={(e) => { const n = [...skillForm.heuristics]; n[i] = { ...n[i], action: e.target.value }; setSkillForm((prev: any) => ({ ...prev, heuristics: n })); }}
+                                  className="flex-1 min-w-[80px] bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-amber-600/50" />
+                              </div>
+                            )}
+                            {!isViewer && (
+                              <button onClick={() => {
+                                setSkillForm((prev: any) => ({ ...prev, heuristics: prev.heuristics.filter((_: any, j: number) => j !== i) }));
+                              }} className="text-ink-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                            )}
+                          </div>
+                        ))}
+                        {(!skillForm.heuristics || skillForm.heuristics.length === 0) && (
+                          <p className="text-xs text-ink-600 italic py-2">如：遇到不确定时先做小规模测试、情绪激动时延迟24小时再做决定...</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── 表达风格 ── */}
+                    <div>
+                      <span className="text-xs text-amber-400 font-medium block mb-2">表达风格</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {["tone", "rhythm", "certainty"].map((field) => (
+                          <div key={field}>
+                            <span className="text-[10px] text-ink-500">{field === "tone" ? "语气" : field === "rhythm" ? "节奏" : "确定性"}</span>
+                            {isViewer ? (
+                              <p className="text-sm text-ink-200 mt-0.5">{skillForm.expression?.[field] || "—"}</p>
+                            ) : (
+                              <input value={skillForm.expression?.[field] || ""} placeholder={field === "tone" ? "如：沉稳、犀利" : field === "rhythm" ? "如：短句为主" : "如：结论明确"}
+                                onChange={(e) => setSkillForm((prev: any) => ({ ...prev, expression: { ...prev.expression, [field]: e.target.value } }))}
+                                className="w-full mt-0.5 bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-ink-700" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2">
+                        <span className="text-[10px] text-ink-500">常用句式（回车添加）</span>
+                        {isViewer ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(skillForm.expression?.sentence_patterns || []).map((p: string, i: number) => (
+                              <code key={i} className="px-2 py-0.5 rounded bg-ink-800 text-ink-300 text-xs font-mono">{p}</code>
+                            ))}
+                          </div>
+                        ) : (
+                          <textarea
+                            value={(skillForm.expression?.sentence_patterns || []).join("\n")}
+                            onChange={(e) => setSkillForm((prev: any) => ({ ...prev, expression: { ...prev.expression, sentence_patterns: e.target.value.split("\n").filter(Boolean) } }))}
+                            rows={3}
+                            placeholder="一行一个句式，如：&#10;我认为...&#10;从长远来看...&#10;关键在于..."
+                            className="w-full mt-1 bg-ink-950/50 border border-ink-800 rounded-lg px-3 py-2 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-ink-700 font-mono resize-y"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── 反例黑名单 ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-red-400 font-medium">
+                          反例黑名单 ({skillForm.anti_patterns?.length || 0})
+                        </span>
+                        {!isViewer && (
+                          <button onClick={() => {
+                            setSkillForm((prev: any) => ({ ...prev, anti_patterns: [...(prev.anti_patterns || []), { pattern: "", fix: "" }] }));
+                          }} className="text-xs text-ancient-400 hover:text-ancient-300">+ 添加</button>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {(skillForm.anti_patterns || []).map((ap: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-sm group">
+                            {isViewer ? (
+                              <>
+                                <span className="text-red-400">❌ {ap.pattern || "未指定"}</span>
+                                {ap.fix && <span className="text-emerald-400">→ ✅ {ap.fix}</span>}
+                              </>
+                            ) : (
+                              <div className="flex-1 flex items-center gap-2 flex-wrap">
+                                <span className="text-red-400 text-xs shrink-0">❌</span>
+                                <input value={ap.pattern || ""} placeholder="不该做的事"
+                                  onChange={(e) => { const n = [...skillForm.anti_patterns]; n[i] = { ...n[i], pattern: e.target.value }; setSkillForm((prev: any) => ({ ...prev, anti_patterns: n })); }}
+                                  className="flex-1 min-w-[100px] bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-red-600/50" />
+                                <span className="text-emerald-400 text-xs shrink-0">→ ✅</span>
+                                <input value={ap.fix || ""} placeholder="正确做法"
+                                  onChange={(e) => { const n = [...skillForm.anti_patterns]; n[i] = { ...n[i], fix: e.target.value }; setSkillForm((prev: any) => ({ ...prev, anti_patterns: n })); }}
+                                  className="flex-1 min-w-[80px] bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-emerald-600/50" />
+                              </div>
+                            )}
+                            {!isViewer && (
+                              <button onClick={() => {
+                                setSkillForm((prev: any) => ({ ...prev, anti_patterns: prev.anti_patterns.filter((_: any, j: number) => j !== i) }));
+                              }} className="text-ink-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                            )}
+                          </div>
+                        ))}
+                        {(!skillForm.anti_patterns || skillForm.anti_patterns.length === 0) && (
+                          <p className="text-xs text-ink-600 italic py-2">如：不做没有数据支撑的判断、不替别人做决定...</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── 诚实边界 ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-ink-400 font-medium">
+                          诚实边界 ({skillForm.limitations?.length || 0})
+                        </span>
+                        {!isViewer && (
+                          <button onClick={() => {
+                            setSkillForm((prev: any) => ({ ...prev, limitations: [...(prev.limitations || []), ""] }));
+                          }} className="text-xs text-ancient-400 hover:text-ancient-300">+ 添加</button>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {(skillForm.limitations || []).map((l: string, i: number) => (
+                          <div key={i} className="flex items-center gap-2 group">
+                            <span className="text-ink-600 text-xs">·</span>
+                            {isViewer ? (
+                              <span className="text-xs text-ink-400">{l || "（空）"}</span>
+                            ) : (
+                              <input value={l} placeholder="我不擅长的领域..."
+                                onChange={(e) => { const n = [...skillForm.limitations]; n[i] = e.target.value; setSkillForm((prev: any) => ({ ...prev, limitations: n })); }}
+                                className="flex-1 bg-ink-950/50 border border-ink-800 rounded px-2 py-1 text-xs text-ink-200 placeholder-ink-600 focus:outline-none focus:border-ink-700" />
+                            )}
+                            {!isViewer && (
+                              <button onClick={() => {
+                                setSkillForm((prev: any) => ({ ...prev, limitations: prev.limitations.filter((_: any, j: number) => j !== i) }));
+                              }} className="text-ink-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                            )}
+                          </div>
+                        ))}
+                        {(!skillForm.limitations || skillForm.limitations.length === 0) && (
+                          <p className="text-xs text-ink-600 italic py-2">如：不了解2025年之后的事件、不擅长技术实现细节...</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Save button for non-admin users */}
+                    {!isAdmin && !isViewer && (
+                      <button onClick={saveSkillStructured} disabled={savingSkill}
+                        className="w-full py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 text-sm font-medium hover:bg-emerald-600/30 disabled:opacity-40 flex items-center justify-center gap-2">
+                        {savingSkill ? <Loader2 size={14} className="animate-spin" /> : null}保存认知配置
+                      </button>
                     )}
                   </div>
-                  </div>
-                ) : (
-                  <EmptyHint text="尚未配置，点击上方「AI 生成认知操作系统」自动生成" />
                 )}
               </Section>
 

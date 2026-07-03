@@ -764,6 +764,114 @@ async def delete_document(
     return {"status": "deleted"}
 
 
+@router.delete("/{persona_id}")
+async def delete_advisor(
+    persona_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Delete an advisor persona and all associated data.
+
+    Deletes: persona record, knowledge documents, Milvus vectors, docstore file,
+             in-memory caches (persona engine, skill engine, agent registry).
+
+    Preserves: sessions and chat messages (advisor shows as "已删除" in UI).
+    """
+    db_p = await _get_editable_persona(persona_id, user, db)
+
+    name = db_p.name
+    doc_count = 0
+    vector_count = 0
+
+    # 1. Delete from Milvus vector store
+    try:
+        from app.services.ingestion.milvus_store import milvus_store as _ms
+        vector_count = _ms.delete_persona(persona_id)
+    except Exception:
+        pass  # Milvus may not be running
+
+    # 2. Delete knowledge documents from DB
+    docs_result = await db.execute(
+        select(KnowledgeDocument).where(KnowledgeDocument.persona_id == persona_id)
+    )
+    docs = docs_result.scalars().all()
+    doc_count = len(docs)
+    for doc in docs:
+        await db.delete(doc)
+
+    # 3. Delete docstore JSON file
+    docstore_path = os.path.join("data", "docstore", f"{persona_id}.json")
+    if os.path.exists(docstore_path):
+        os.remove(docstore_path)
+
+    # 4. Remove from in-memory caches
+    try:
+        from app.services.persona_engine import get_persona_engine
+        get_persona_engine().remove_persona(persona_id)
+    except Exception:
+        pass
+    try:
+        from app.services.skill_engine import get_skill_engine
+        get_skill_engine().remove_skill(persona_id)
+    except Exception:
+        pass
+    try:
+        from app.services.agent.agent_registry import agent_registry
+        agent_registry.remove(persona_id)
+    except Exception:
+        pass
+
+    # 5. Delete persona record
+    await db.delete(db_p)
+    await db.commit()
+
+    return {
+        "status": "deleted",
+        "persona_id": persona_id,
+        "name": name,
+        "docs_deleted": doc_count,
+        "vectors_deleted": vector_count,
+        "message": f"军师「{name}」已删除。已删除 {doc_count} 个文档、{vector_count} 条向量索引。会话记录已保留。",
+    }
+
+
+async def _check_knowledge(name: str, context: dict) -> dict:
+    """Ask LLM to assess whether it knows enough about a person to generate config.
+
+    Returns {"sufficient": True} or {"sufficient": False, "reason": str, "suggested_fields": [...]}
+    """
+    import json as _json
+    from app.core.llm_client import chat
+
+    assessment_prompt = (
+        "你是一个知识评估助手。用户想为某个人物生成 AI 角色配置。\n"
+        "请评估你对这个人物的了解程度。\n\n"
+        "评估标准：\n"
+        "- 如果是历史名人、公众人物、广为人知的思想家/领袖：知识充足，可以直接生成\n"
+        "- 如果是普通人、小众人物、或你训练数据中没有的人：知识不足，需要用户提供更多信息\n\n"
+        "输出严格 JSON：\n"
+        '{"level": 1-5, "sufficient": true/false, "reason": "一句话说明判断依据", '
+        '"missing_info": ["建议用户补充的字段1", "字段2"]}\n\n'
+        "level: 1=完全不认识, 2=仅知道名字, 3=有基本了解, 4=比较熟悉, 5=非常了解\n"
+        "sufficient: level >= 3 时为 true\n"
+        "missing_info: 如果 insufficient，列出用户应该先填写哪些字段（如：简介、说话风格、核心信条等）"
+    )
+
+    ctx_json = _json.dumps(context, ensure_ascii=False)
+    user_prompt = f"人物：{name}\n已知信息：{ctx_json}"
+
+    try:
+        response = await chat(assessment_prompt, user_prompt, temperature=0.3)
+        text = response.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+        return _json.loads(text)
+    except Exception:
+        # If check fails, default to allowing generation
+        return {"sufficient": True, "level": 3}
+
+
 @router.post("/{persona_id}/enrich")
 async def enrich_advisor(
     persona_id: str,
@@ -773,6 +881,7 @@ async def enrich_advisor(
     """Use LLM to enrich a persona's thinking framework, voice, beliefs, and knowledge domain.
 
     Only fills fields that are currently empty/default, preserving user-edited content.
+    First checks if LLM knows enough about the person; if not, asks user to fill in more context.
     """
     import json as _json
     from app.core.llm_client import chat
@@ -788,9 +897,21 @@ async def enrich_advisor(
         "style": db_p.style or "",
     }
 
+    # ── Knowledge check ──
+    check = await _check_knowledge(db_p.name, basic_info)
+    if not check.get("sufficient", True):
+        return {
+            "status": "insufficient_knowledge",
+            "level": check.get("level", 1),
+            "reason": check.get("reason", "AI 对此人物了解不足"),
+            "suggested_fields": check.get("missing_info", ["short_bio", "style", "核心信条"]),
+            "message": (
+                f"AI 对「{db_p.name}」的了解不足（知识等级 {check.get('level', 1)}/5）。\n"
+                f"建议先填写以下字段，再重新生成：{'、'.join(check.get('missing_info', ['简介', '风格', '信条']))}"
+            ),
+        }
+
     system_prompt = (
-        "你是一位精通中国历史文化和战略思维的专家。你的任务是根据一个历史/现代名人的基本信息，"
-        "为其生成深度的人格配置（persona configuration）。\n\n"
         "输出必须是严格合法的JSON格式，不要有任何额外的解释文字。JSON结构如下：\n"
         '{\n'
         '  "thinking_framework": {\n'
@@ -893,6 +1014,7 @@ async def generate_skill(
     The skill includes: workflow, mental models, heuristics, expression DNA,
     anti-patterns, limitations, and checkpoints — making the AI persona more
     consistent and sophisticated in conversation.
+    First checks if LLM knows enough about the person; if not, asks user to fill in more context.
     """
     import json as _json
     from app.core.llm_client import chat
@@ -914,6 +1036,20 @@ async def generate_skill(
         "canonical_works": db_p.canonical_works or [],
         "knowledge_domain": db_p.knowledge_domain or {},
     }
+
+    # ── Knowledge check ──
+    check = await _check_knowledge(db_p.name, context)
+    if not check.get("sufficient", True):
+        return {
+            "status": "insufficient_knowledge",
+            "level": check.get("level", 1),
+            "reason": check.get("reason", "AI 对此人物了解不足"),
+            "suggested_fields": check.get("missing_info", ["short_bio", "style", "thinking_framework", "core_beliefs"]),
+            "message": (
+                f"AI 对「{db_p.name}」的了解不足（知识等级 {check.get('level', 1)}/5）。\n"
+                f"建议先填写以下字段，再重新生成：{'、'.join(check.get('missing_info', ['简介', '风格', '思维框架', '信条']))}"
+            ),
+        }
 
     system_prompt = (
         '你是一位认知科学家，专门为AI角色设计「认知操作系统」（Cognitive Skill）。\n'

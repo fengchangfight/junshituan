@@ -78,9 +78,9 @@ export default function ChatBubble({
         <div className="mt-0.5">
           <Avatar
             src={advisor?.avatar || ""}
-            name={advisor?.name || "?"}
+            name={advisor?.name || message.advisorName || "?"}
             size="md"
-            colorClass={avatarColor}
+            colorClass={advisor ? avatarColor : "from-ink-700 to-ink-800"}
           />
         </div>
       ) : (
@@ -88,11 +88,14 @@ export default function ChatBubble({
       )}
 
       <div className="min-w-0 max-w-[75%]">
-        {showAvatar && advisor && (
+        {showAvatar && (
           <div className="flex items-center gap-1.5 mb-0.5 ml-0.5">
-            <span className="text-xs font-bold text-ink-300">
-              {advisor.name}
+            <span className={`text-xs font-bold ${advisor ? "text-ink-300" : "text-ink-500 line-through"}`}>
+              {advisor?.name || message.advisorName || "已删除"}
             </span>
+            {!advisor && (
+              <span className="text-[10px] text-ink-600">已删除</span>
+            )}
             {isThinking && (
               <motion.span
                 animate={{ opacity: [0.3, 1, 0.3] }}

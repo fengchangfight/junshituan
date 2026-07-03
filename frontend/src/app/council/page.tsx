@@ -82,16 +82,32 @@ function CouncilChat() {
   useEffect(() => {
     async function init() {
       const list = await fetchAdvisors().catch(() => []);
-      const selected = list.filter((a) => advisorIdsParam.includes(a.id));
-      setAdvisors(selected);
       setAllAdvisors(list);
+
+      // Resolve session advisors — create placeholders for deleted ones
+      const resolved = advisorIdsParam.map((id) => {
+        const found = list.find((a) => a.id === id);
+        return found || {
+          id,
+          name: "已删除",
+          title: "该军师已被删除",
+          category: "",
+          era: "",
+          avatar: "",
+          shortBio: "",
+          style: "",
+          visibility: "",
+        } as Advisor;
+      });
+      setAdvisors(resolved);
 
       if (sessionId) {
         const detail = await fetchSessionDetail(sessionId).catch(() => null);
         if (detail && detail.messages && detail.messages.length > 0) {
           setMessages(buildMessagesFromSession(detail));
         } else {
-          setMessages([{ id: "system-welcome", role: "system", content: `${selected.map((a) => a.name).join("、")} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }]);
+          const names = resolved.map((a) => a.name).join("、");
+          setMessages([{ id: "system-welcome", role: "system", content: `${names} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }]);
         }
       } else {
         setMessages([{ id: "system-welcome", role: "system", content: "议事厅已开启。请向军师团提问。", timestamp: Date.now() }]);
@@ -344,18 +360,19 @@ function CouncilChat() {
                 <div className="space-y-1.5">
                   {advisors.map((adv, i) => {
                     const isReplying = replyingId === adv.id;
+                    const isDeleted = adv.name === "已删除";
                     return (
                       <motion.div key={adv.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
-                        onDoubleClick={() => { setInput((prev) => prev.includes(`@${adv.name}`) ? prev : `${prev}@${adv.name} `); inputRef.current?.focus(); }}
-                        title={`双击 @${adv.name}`}
-                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors cursor-pointer ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "hover:bg-ink-800/30 border border-transparent"}`}>
-                        <Avatar src={adv.avatar} name={adv.name} size="lg" colorClass={AVATAR_COLORS[i % AVATAR_COLORS.length]} />
+                        onDoubleClick={() => { if (!isDeleted) { setInput((prev) => prev.includes(`@${adv.name}`) ? prev : `${prev}@${adv.name} `); inputRef.current?.focus(); } }}
+                        title={isDeleted ? "该军师已被删除" : `双击 @${adv.name}`}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors ${isDeleted ? "opacity-50 cursor-default" : "cursor-pointer hover:bg-ink-800/30"} ${isReplying ? "bg-amber-900/20 border border-amber-800/30" : "border border-transparent"}`}>
+                        <Avatar src={adv.avatar} name={adv.name} size="lg" colorClass={isDeleted ? "from-ink-700 to-ink-800" : AVATAR_COLORS[i % AVATAR_COLORS.length]} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-bold text-ink-100 truncate">{adv.name}</span>
+                            <span className={`text-sm font-bold truncate ${isDeleted ? "text-ink-500 line-through" : "text-ink-100"}`}>{adv.name}</span>
                             {isReplying && <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 0.6 }} className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />}
                           </div>
-                          <p className="text-[11px] text-ink-500 truncate">{adv.era} · {adv.title}</p>
+                          <p className="text-[11px] text-ink-600 truncate">{isDeleted ? "该军师已被删除" : `${adv.era} · ${adv.title}`}</p>
                         </div>
                       </motion.div>
                     );
