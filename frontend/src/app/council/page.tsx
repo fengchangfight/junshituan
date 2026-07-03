@@ -175,28 +175,29 @@ function CouncilChat() {
               return prev.map((a) => a.id === actId ? { ...a, status: "done" as const, results: tp.results || [] } : a);
             }
           });
-          // Also show brief status in chat bubble
-          const statusText = tp.action === "tool_start"
-            ? `📚 正在搜集汇总资料：${tp.query || "..."}`
-            : `📖 资料汇总完成：找到 ${tp.result_count ?? "?"} 条结果`;
-          setReplyingId(event.advisor_id);
-          setMessages((prev) => {
-            const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
-            let msgs = prev;
-            if (!hasPending && event.advisor_id !== "system") {
-              msgs = [...prev, {
-                id: `pending-${event.advisor_id}`, role: "advisor" as const,
-                advisorId: event.advisor_id, advisorName: event.advisor_name || "",
-                content: statusText, timestamp: Date.now(), isStreaming: true,
-              }];
-            }
-            return msgs.map((m) => {
-              if (m.advisorId === event.advisor_id && m.isStreaming) {
-                return { ...m, content: statusText };
+          // Show status in chat bubble only on tool_start (keeps user informed without
+          // the confusing "done → wait → done again" flicker from multi-round tool calls)
+          if (tp.action === "tool_start") {
+            const statusText = `📚 正在搜集汇总资料：${tp.query || "..."}`;
+            setReplyingId(event.advisor_id);
+            setMessages((prev) => {
+              const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
+              let msgs = prev;
+              if (!hasPending && event.advisor_id !== "system") {
+                msgs = [...prev, {
+                  id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                  advisorId: event.advisor_id, advisorName: event.advisor_name || "",
+                  content: statusText, timestamp: Date.now(), isStreaming: true,
+                }];
               }
-              return m;
+              return msgs.map((m) => {
+                if (m.advisorId === event.advisor_id && m.isStreaming) {
+                  return { ...m, content: statusText };
+                }
+                return m;
+              });
             });
-          });
+          }
         } else if (event.content || event.done) {
           clearTimeout(timeout);
           if (event.done) {
@@ -216,7 +217,7 @@ function CouncilChat() {
             }
             return msgs.map((m) => {
               if (m.advisorId === event.advisor_id && m.isStreaming) {
-                const isToolStatus = m.content.startsWith("📚") || m.content.startsWith("📖");
+                const isToolStatus = m.content.startsWith("📚");
                 return {
                   ...m,
                   content: isToolStatus ? (event.content || "") : m.content + (event.content || ""),
@@ -297,16 +298,17 @@ function CouncilChat() {
               return prev.map((a) => a.id === actId ? { ...a, status: "done" as const, results: tp.results || [] } : a);
             }
           });
-          const statusText = tp.action === "tool_start"
-            ? `📚 正在搜集汇总资料：${tp.query || "..."}`
-            : `📖 资料汇总完成：找到 ${tp.result_count ?? "?"} 条结果`;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id === pendingMsg.id) return { ...m, content: statusText };
-              if (m.advisorId === event.advisor_id && m.isStreaming) return { ...m, content: statusText };
-              return m;
-            })
-          );
+          // Only update chat bubble on tool_start (avoid confusing "done/done again" flicker)
+          if (tp.action === "tool_start") {
+            const statusText = `📚 正在搜集汇总资料：${tp.query || "..."}`;
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id === pendingMsg.id) return { ...m, content: statusText };
+                if (m.advisorId === event.advisor_id && m.isStreaming) return { ...m, content: statusText };
+                return m;
+              })
+            );
+          }
         } else if (event.content || event.done) {
           clearTimeout(timeout2);
           if (!gotContent && event.content) {
@@ -322,7 +324,7 @@ function CouncilChat() {
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.advisorId === event.advisor_id && m.isStreaming) {
-                  const isToolStatus = m.content.startsWith("📚") || m.content.startsWith("📖");
+                  const isToolStatus = m.content.startsWith("📚");
                   return {
                     ...m,
                     content: isToolStatus ? (event.content || "") : m.content + (event.content || ""),

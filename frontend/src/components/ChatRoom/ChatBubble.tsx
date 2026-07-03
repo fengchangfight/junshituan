@@ -48,7 +48,7 @@ export default function ChatBubble({
 
   const isUser = message.role === "user";
   const isThinking = message.isStreaming && message.content === "";
-  const isToolProgress = message.isStreaming && (message.content.startsWith("📚") || message.content.startsWith("📖"));
+  const isToolProgress = message.isStreaming && message.content.startsWith("📚");
   const isPartial = message.isStreaming && message.content !== "" && !isToolProgress;
 
   if (isUser) {
