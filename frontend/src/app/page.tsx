@@ -49,15 +49,7 @@ export default function HomePage() {
   useEffect(() => {
     fetchAdvisors()
       .then(setAdvisors)
-      .catch(() => {
-        setAdvisors([
-          {
-            id: "zhuge-liang", name: "诸葛亮", title: "军事家·政治家",
-            category: "军事家", era: "三国", avatar: "/avatars/zhuge-liang.png",
-            shortBio: "字孔明，号卧龙，三国时期蜀汉丞相。", style: "谨慎周密，以史为鉴",
-          },
-        ]);
-      });
+      .catch(() => {});
     setIsLoggedIn(!!getToken());
   }, []);
 
