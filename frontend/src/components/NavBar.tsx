@@ -40,11 +40,9 @@ export default function NavBar() {
               <Link href="/sessions" className="hover:text-ancient-400 transition-colors">
                 我的议事
               </Link>
-              {isAdmin && (
-                <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
-                  管理
-                </Link>
-              )}
+              <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
+                管理军师
+              </Link>
               <span className="text-ink-500">{username}</span>
               <button
                 onClick={handleLogout}

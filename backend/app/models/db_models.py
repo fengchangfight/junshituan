@@ -72,9 +72,11 @@ class PersonaDB(Base):
     # Skill configuration (cognitive operating system)
     skill_config = Column(JSON, default=None)
 
-    # Publication
+    # Publication & visibility
     is_published = Column(Boolean, default=False)
     published_at = Column(DateTime(timezone=True), nullable=True)
+    visibility = Column(String(16), default="public")  # "public" | "private"
+    creator_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

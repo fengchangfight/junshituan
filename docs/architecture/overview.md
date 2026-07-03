@@ -12,7 +12,7 @@
 | 后端 | Python FastAPI | REST API + SSE 流式响应 |
 | Agent | LangGraph | 每个军师对应一个状态机 Agent |
 | 向量库 | Milvus | 知识库检索（RAG） |
-| 关系库 | PostgreSQL / SQLite | 用户、会话、记忆持久化 |
+| 关系库 | PostgreSQL | 用户、会话、记忆持久化 |
 | LLM | DeepSeek API (OpenAI 兼容) | 对话生成、推理、嵌入 |
 | 容器 | Docker Compose | 一键部署 |
 
@@ -46,7 +46,7 @@
 ┌────────▼───────────────────────────▼──────────────┐
 │              持久化层                              │
 │  ────────────────────────────────────────────────│
-│  PostgreSQL/SQLite: 用户/会话/记忆                 │
+│  PostgreSQL: 用户/会话/记忆                 │
 │  Milvus:         向量索引                          │
 │  LangGraph Checkpointer: Agent 状态快照           │
 └───────────────────────────────────────────────────┘

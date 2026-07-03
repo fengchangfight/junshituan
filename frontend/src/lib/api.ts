@@ -15,7 +15,7 @@ export function removeToken() {
   localStorage.removeItem("junshituan_token");
 }
 
-export function getUserInfo(): { username: string; isAdmin: boolean } | null {
+export function getUserInfo(): { username: string; isAdmin: boolean; role: string } | null {
   const token = getToken();
   if (!token) return null;
   try {
@@ -24,7 +24,9 @@ export function getUserInfo(): { username: string; isAdmin: boolean } | null {
       removeToken();
       return null;
     }
-    return { username: payload.username || "", isAdmin: payload.role === "super_admin" || payload.role === "admin" || !!payload.is_admin };
+    const role = payload.role || "user";
+    const isAdmin = role === "super_admin" || role === "admin" || role === "viewer";
+    return { username: payload.username || "", isAdmin, role };
   } catch {
     return null;
   }
@@ -70,7 +72,10 @@ export async function register(username: string, password: string, displayName?:
 // ── Advisors ────────────────────────────────────────────────────────
 
 export async function fetchAdvisors(): Promise<Advisor[]> {
-  const res = await fetch(`${API_BASE}/api/advisors`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/api/advisors`, {
+    cache: "no-store",
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch advisors");
   return res.json();
 }

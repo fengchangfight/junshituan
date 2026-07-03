@@ -17,6 +17,8 @@ interface Advisor {
   kb_status: string;
   kb_doc_count: number;
   is_published: boolean;
+  visibility: string;
+  creator_id: string;
 }
 
 const CATEGORIES = ["军事家", "哲学家", "政治家", "文学家", "科学家", "企业家", "其他"];
@@ -36,7 +38,6 @@ export default function AdminAdvisorsPage() {
   const isViewer = role === "viewer";
 
   const [form, setForm] = useState({
-    id: "",
     name: "",
     title: "",
     category: "其他",
@@ -69,8 +70,8 @@ export default function AdminAdvisorsPage() {
   }, []);
 
   const handleCreate = async () => {
-    if (!form.id || !form.name || !form.title) {
-      setCreateError("ID、名称、称号为必填项");
+    if (!form.name || !form.title) {
+      setCreateError("名称、称号为必填项");
       return;
     }
     setCreating(true);
@@ -90,7 +91,7 @@ export default function AdminAdvisorsPage() {
         throw new Error(err.detail || "创建失败");
       }
       setShowCreate(false);
-      setForm({ id: "", name: "", title: "", category: "其他", era: "", avatar: "", short_bio: "", style: "" });
+      setForm({ name: "", title: "", category: "其他", era: "", avatar: "", short_bio: "", style: "" });
       setLoading(true);
       fetchAdvisors();
     } catch (e: any) {
@@ -189,9 +190,13 @@ export default function AdminAdvisorsPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-display text-ink-200">知识库管理</h2>
+          <h2 className="text-2xl font-display text-ink-200">
+            {isViewer ? "知识库管理（只读）" : role === "user" ? "我的军师" : "知识库管理"}
+          </h2>
           <p className="text-sm text-ink-500 mt-1">
-            管理每个军师的知识文档，消化后发布为可用状态
+            {role === "user"
+              ? "管理你创建的私人军师，补充知识文档后即可在议事厅中使用"
+              : "管理每个军师的知识文档，消化后发布为可用状态"}
           </p>
         </div>
         {!isViewer && (
@@ -236,15 +241,6 @@ export default function AdminAdvisorsPage() {
             )}
 
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-ink-400 mb-1">ID (英文标识) *</label>
-                <input
-                  value={form.id}
-                  onChange={(e) => setForm({ ...form, id: e.target.value })}
-                  placeholder="例如: sun-zi"
-                  className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
-                />
-              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-ink-400 mb-1">名称 *</label>
@@ -461,7 +457,11 @@ export default function AdminAdvisorsPage() {
                   {adv.kb_doc_count > 0 && (
                     <span className="text-xs text-ink-600">{adv.kb_doc_count} 条索引</span>
                   )}
-                  {adv.is_published ? (
+                  {adv.visibility === "private" ? (
+                    <span className="text-[10px] bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full">
+                      私人
+                    </span>
+                  ) : adv.is_published ? (
                     <span className="text-[10px] bg-emerald-900/40 text-emerald-400 px-2 py-0.5 rounded-full">
                       已发布
                     </span>

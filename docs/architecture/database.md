@@ -1,11 +1,8 @@
 # 数据库设计
 
-## 支持引擎
+## 引擎
 
-| 环境 | 引擎 | 连接串 |
-|------|------|--------|
-| 开发 | SQLite | `sqlite+aiosqlite:///./data/junshituan.db` |
-| 生产 | PostgreSQL 16 | `postgresql+asyncpg://user:pass@host/db` |
+生产环境使用 PostgreSQL 16，连接串配置在 `.env` 文件的 `DATABASE_URL`。
 
 SQLAlchemy 异步引擎，表结构自动创建（`init_db()` 在服务启动时调用）。
 

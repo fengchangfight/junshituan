@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     embedding_price_per_m: float = 0.5
 
     # ── Database ────────────────────────────────────────────────────────
-    database_url: str = "sqlite+aiosqlite:///./data/junshituan.db"
+    database_url: str = "postgresql+asyncpg://junshituan:junshituan_secret@localhost:5432/junshituan"
 
     # ── Milvus (Standalone via Docker) ─────────────────────────────────
     milvus_host: str = "localhost"

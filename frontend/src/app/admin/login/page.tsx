@@ -32,10 +32,6 @@ export default function AdminLoginPage() {
       }
 
       const data = await res.json();
-      const allowedRoles = ["super_admin", "admin", "viewer"];
-      if (!allowedRoles.includes(data.role)) {
-        throw new Error("需要管理员权限");
-      }
 
       localStorage.setItem("junshituan_token", data.access_token);
       router.push("/admin");

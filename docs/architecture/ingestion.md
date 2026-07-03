@@ -6,7 +6,7 @@
 上传文档 (.md / .txt)
   │
   ▼
-KnowledgeDocument (SQLite/PostgreSQL)
+KnowledgeDocument (PostgreSQL)
   │
   ▼  [点击"消化"]
 IngestionPipeline.ingest_text()

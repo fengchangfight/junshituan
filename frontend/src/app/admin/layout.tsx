@@ -37,11 +37,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           if (d.avatar_url) setAvatar(d.avatar_url);
           if (d.display_name) setDisplayName(d.display_name);
           if (d.role) setRole(d.role);
-          const allowedRoles = ["super_admin", "admin", "viewer"];
-          if (d.role && !allowedRoles.includes(d.role)) {
-            localStorage.removeItem("junshituan_token");
-            router.push("/admin/login");
-          }
         })
         .catch(() => {});
     }

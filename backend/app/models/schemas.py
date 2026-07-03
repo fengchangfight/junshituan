@@ -16,6 +16,8 @@ class AdvisorOut(BaseModel):
     kb_status: str = "empty"
     kb_doc_count: int = 0
     is_published: bool = False
+    visibility: str = "public"
+    creator_id: Optional[str] = None
 
 
 class AdvisorAdminOut(AdvisorOut):
@@ -63,7 +65,7 @@ class SmartCreateRequest(BaseModel):
 
 
 class PersonaCreate(BaseModel):
-    id: str = Field(min_length=1, max_length=64)
+    id: Optional[str] = None
     name: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=256)
     category: str = "其他"

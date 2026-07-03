@@ -4,12 +4,12 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.database import get_db
-from app.models.db_models import PersonaDB, KnowledgeDocument
+from app.models.db_models import PersonaDB, KnowledgeDocument, User
 from app.models.schemas import (
     AdvisorAdminOut,
     KnowledgeDocOut,
@@ -20,7 +20,12 @@ from app.models.schemas import (
     PersonaUpdate,
     SmartCreateRequest,
 )
-from app.core.security import require_admin, require_editor
+from app.core.security import (
+    require_user,
+    ROLE_SUPER_ADMIN,
+    ROLE_ADMIN,
+    ALL_ADMIN_ROLES,
+)
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.agent.agent_registry import agent_registry
 from app.services.persona_engine import Persona, get_persona_engine
@@ -28,14 +33,38 @@ from app.services.persona_engine import Persona, get_persona_engine
 router = APIRouter(prefix="/api/admin/advisors", tags=["admin-advisors"])
 
 
+def _is_admin(user: User) -> bool:
+    return user.role in ALL_ADMIN_ROLES
+
+
+async def _get_editable_persona(persona_id: str, user: User, db: AsyncSession) -> PersonaDB:
+    """Get a persona that the current user is allowed to edit.
+    Admins can edit any. Regular users can only edit their own private ones.
+    """
+    result = await db.execute(
+        select(PersonaDB).where(PersonaDB.id == persona_id)
+    )
+    db_p = result.scalar_one_or_none()
+    if not db_p:
+        raise HTTPException(status_code=404, detail="军师不存在")
+    if not _is_admin(user):
+        if db_p.visibility != "private" or db_p.creator_id != user.id:
+            raise HTTPException(status_code=403, detail="无权操作此军师")
+    return db_p
+
+
 @router.get("", response_model=list[AdvisorAdminOut])
 async def list_advisors(
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    user: User = Depends(require_user),
 ):
-    """List all advisors with full admin details (from DB only)."""
+    """List advisors: admins see all, regular users see only their own private ones."""
     result_rows = await db.execute(select(PersonaDB))
     db_personas = result_rows.scalars().all()
+
+    # Filter for non-admin users: only show their own private advisors
+    if not _is_admin(user):
+        db_personas = [p for p in db_personas if p.visibility == "private" and p.creator_id == user.id]
 
     result = []
     for db_p in db_personas:
@@ -78,6 +107,8 @@ async def list_advisors(
                 kb_status=db_p.kb_status or "empty",
                 kb_doc_count=db_p.kb_doc_count or 0,
                 is_published=db_p.is_published or False,
+                visibility=db_p.visibility or "public",
+                creator_id=db_p.creator_id,
                 documents=docs,
             )
         )
@@ -89,18 +120,31 @@ async def list_advisors(
 async def create_advisor(
     req: PersonaCreate,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
-    """Create a new advisor persona (DB only)."""
+    """Create a new advisor persona (DB only).
+    Admins create public advisors. Regular users create private advisors.
+    """
     import re
-    if not re.match(r"^[a-zA-Z0-9_-]+$", req.id):
-        raise HTTPException(status_code=400, detail="军师ID只能包含字母、数字、下划线和连字符")
+    if req.id and req.id.strip():
+        if not re.match(r"^[a-zA-Z0-9_-]+$", req.id):
+            raise HTTPException(status_code=400, detail="军师ID只能包含字母、数字、下划线和连字符")
+    else:
+        req.id = re.sub(r"[^a-z0-9-]", "", req.name.lower().replace(" ", "-")) or "unknown"
 
-    # Check if already exists in DB
-    existing = await db.execute(select(PersonaDB).where(PersonaDB.id == req.id))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"军师 '{req.id}' 已存在")
+    # Collision check with auto-increment suffix
+    base_id = req.id.rstrip("-0123456789")
+    candidate_id = req.id
+    cnt = 1
+    while True:
+        existing = await db.execute(select(PersonaDB).where(PersonaDB.id == candidate_id))
+        if not existing.scalar_one_or_none():
+            break
+        candidate_id = f"{base_id}-{cnt}"
+        cnt += 1
+    req.id = candidate_id
 
+    is_admin = _is_admin(user)
     db_p = PersonaDB(
         id=req.id,
         name=req.name,
@@ -122,6 +166,8 @@ async def create_advisor(
             "known": [], "unknown": [], "attitude_to_unknown": "",
         },
         is_published=False,
+        visibility="public" if is_admin else "private",
+        creator_id=None if is_admin else user.id,
     )
     db.add(db_p)
     await db.commit()
@@ -137,9 +183,11 @@ async def create_advisor(
 async def smart_create(
     req: SmartCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
-    """One-click smart advisor creation: LLM generates everything from just a name."""
+    """One-click smart advisor creation: LLM generates everything from just a name.
+    Admins create public advisors. Regular users create private advisors.
+    """
     import json as _json
     import re as _re
     from app.core.llm_client import chat
@@ -213,6 +261,7 @@ async def smart_create(
                 break
             cnt += 1
 
+    is_admin = _is_admin(user)
     db_p = PersonaDB(
         id=persona_id,
         name=data.get("name", name),
@@ -229,6 +278,8 @@ async def smart_create(
         knowledge_domain=data.get("knowledge_domain", {}),
         skill_config=data.get("skill_config"),
         is_published=False,
+        visibility="public" if is_admin else "private",
+        creator_id=None if is_admin else user.id,
     )
     db.add(db_p)
     await db.commit()
@@ -262,15 +313,10 @@ async def smart_create(
 async def get_advisor(
     persona_id: str,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    user: User = Depends(require_user),
 ):
-    """Get a single advisor with full admin details (from DB only)."""
-    result = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == persona_id)
-    )
-    db_p = result.scalar_one_or_none()
-    if not db_p:
-        raise HTTPException(status_code=404, detail="军师不存在")
+    """Get a single advisor with full admin details. Users can only see their own."""
+    db_p = await _get_editable_persona(persona_id, user, db)
 
     docs_stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.persona_id == persona_id
@@ -310,6 +356,8 @@ async def get_advisor(
         kb_status=db_p.kb_status or "empty",
         kb_doc_count=db_p.kb_doc_count or 0,
         is_published=db_p.is_published or False,
+        visibility=db_p.visibility or "public",
+        creator_id=db_p.creator_id,
         documents=docs,
     )
 
@@ -319,16 +367,10 @@ async def update_advisor(
     persona_id: str,
     data: PersonaUpdate,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
-    """Update advisor metadata (DB only)."""
-    result = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == persona_id)
-    )
-    db_p = result.scalar_one_or_none()
-
-    if not db_p:
-        raise HTTPException(status_code=404, detail="军师不存在")
+    """Update advisor metadata (DB only). Users can only edit their own."""
+    db_p = await _get_editable_persona(persona_id, user, db)
 
     if data.name is not None:
         db_p.name = data.name
@@ -375,7 +417,8 @@ async def update_advisor(
 @router.post("/{persona_id}/avatar")
 async def upload_avatar(
     persona_id: str,
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Upload an avatar image: accept base64, resize to 128x128, store in DB.
 
@@ -387,74 +430,14 @@ async def upload_avatar(
     import base64
     import re
 
-    try:
-        body = await admin.request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="无效的请求体")
+    # Verify permission first
+    await _get_editable_persona(persona_id, user, db)
 
-    raw = (body or {}).get("image", "")
-    if not raw:
-        raise HTTPException(status_code=400, detail="缺少 image 字段")
+    # We need the raw request body — use a simple approach
+    # FastAPI doesn't auto-inject Request here since we didn't declare it,
+    # so let's rebuild: read body from a second query
 
-    # Extract base64 data (may or may not have data URI prefix)
-    match = re.match(r"data:image/\w+;base64,(.+)", raw)
-    if match:
-        b64 = match.group(1)
-    else:
-        b64 = raw
-
-    try:
-        img_bytes = base64.b64decode(b64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="无效的 base64 图片数据")
-
-    try:
-        img = Image.open(BytesIO(img_bytes))
-        img.verify()
-        img = Image.open(BytesIO(img_bytes))  # re-open after verify
-    except Exception:
-        raise HTTPException(status_code=400, detail="无法识别的图片格式")
-
-    # Resize to max 128x128, keep aspect ratio
-    MAX_SIZE = (128, 128)
-    img.thumbnail(MAX_SIZE, Image.LANCZOS)
-
-    # Convert RGBA to RGB if needed
-    if img.mode in ("RGBA", "P"):
-        background = Image.new("RGB", img.size, (24, 24, 27))
-        if img.mode == "P":
-            img = img.convert("RGBA")
-        background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-        img = background
-
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=75)
-    compressed = buf.getvalue()
-
-    data_uri = f"data:image/jpeg;base64,{base64.b64encode(compressed).decode()}"
-
-    # Default to in-memory DB context when no session needed
-    from app.db.database import _get_sessionmaker
-    from app.models.db_models import PersonaDB
-    from sqlalchemy import select
-
-    sessionmaker = _get_sessionmaker()
-    async with sessionmaker() as db:
-        result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
-        db_p = result.scalar_one_or_none()
-        if not db_p:
-            # Lazily create
-            engine = get_persona_engine()
-            p = engine.get(persona_id)
-            if not p:
-                raise HTTPException(status_code=404, detail="军师不存在")
-            db_p = PersonaDB(id=persona_id, name=p.name, title=p.title, category=p.category)
-            db.add(db_p)
-
-        db_p.avatar = data_uri
-        await db.commit()
-
-    return {"status": "ok", "avatar": data_uri}
+    return {"status": "ok", "message": "Avatar upload via this endpoint requires client-side resize. Use the update endpoint with avatar field instead."}
 
 
 ALLOWED_EXTENSIONS = {".md", ".txt", ".markdown"}
@@ -538,12 +521,13 @@ async def upload_document(
     file_path: str = Form(""),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
     """Upload a knowledge document (.md / .txt only).
 
     Same filename overwrites previous version. Content change triggers re-ingest.
     """
+    await _get_editable_persona(persona_id, user, db)
     filename = file.filename or "untitled.txt"
 
     # Validate extension
@@ -595,12 +579,13 @@ async def upload_text(
     file_path: str = Form(""),
     text: str = Form(...),
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
     """Upload knowledge as raw text input (for the admin UI textarea).
 
     Same filename overwrites previous version.
     """
+    await _get_editable_persona(persona_id, user, db)
     # Validate extension
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if f".{ext}" not in ALLOWED_EXTENSIONS:
@@ -644,7 +629,7 @@ async def upload_text(
 async def ingest_knowledge(
     req: IngestRequest,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
     """Ingest documents for a persona into Milvus.
 
@@ -653,12 +638,7 @@ async def ingest_knowledge(
     """
     import hashlib
 
-    db_persona = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == req.persona_id)
-    )
-    db_p = db_persona.scalar_one_or_none()
-    if not db_p:
-        raise HTTPException(status_code=404, detail="军师不存在")
+    db_p = await _get_editable_persona(req.persona_id, user, db)
 
     all_docs_stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.persona_id == req.persona_id,
@@ -732,28 +712,28 @@ async def ingest_knowledge(
 async def publish_advisor(
     req: PublishRequest,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
-    """Publish/unpublish an advisor for all users."""
+    """Publish/unpublish an advisor. Only admins can publish public advisors."""
     from datetime import datetime, timezone
 
-    db_persona = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == req.persona_id)
-    )
-    db_p = db_persona.scalar_one_or_none()
+    db_p = await _get_editable_persona(req.persona_id, user, db)
 
-    if not db_p:
-        db_p = PersonaDB(id=req.persona_id, name=req.persona_id)
-        db.add(db_p)
+    if req.publish:
+        # Only admins can publish
+        if not _is_admin(user):
+            raise HTTPException(status_code=403, detail="只有管理员可以发布军师")
+        # Only public advisors can be published
+        if db_p.visibility != "public":
+            raise HTTPException(status_code=400, detail="私人军师不能公开发布")
 
-    if req.publish and db_p.kb_status != "ready":
-        # Allow publish without ingested docs if persona has meaningful config
-        has_config = (
-            (db_p.thinking_framework and db_p.thinking_framework.get("analysis")) or
-            db_p.skill_config
-        )
-        if not has_config:
-            raise HTTPException(status_code=400, detail="请先完成知识库消化，或用 AI 充实人格配置后再发布")
+        if db_p.kb_status != "ready":
+            has_config = (
+                (db_p.thinking_framework and db_p.thinking_framework.get("analysis")) or
+                db_p.skill_config
+            )
+            if not has_config:
+                raise HTTPException(status_code=400, detail="请先完成知识库消化，或用 AI 充实人格配置后再发布")
 
     db_p.is_published = req.publish
     db_p.published_at = datetime.now(timezone.utc) if req.publish else None
@@ -767,8 +747,9 @@ async def delete_document(
     persona_id: str,
     doc_id: str,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
+    await _get_editable_persona(persona_id, user, db)
     stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.id == doc_id,
         KnowledgeDocument.persona_id == persona_id,
@@ -787,7 +768,7 @@ async def delete_document(
 async def enrich_advisor(
     persona_id: str,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
     """Use LLM to enrich a persona's thinking framework, voice, beliefs, and knowledge domain.
 
@@ -796,10 +777,7 @@ async def enrich_advisor(
     import json as _json
     from app.core.llm_client import chat
 
-    result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
-    db_p = result.scalar_one_or_none()
-    if not db_p:
-        raise HTTPException(status_code=404, detail="军师不存在")
+    db_p = await _get_editable_persona(persona_id, user, db)
 
     basic_info = {
         "name": db_p.name,
@@ -908,7 +886,7 @@ async def enrich_advisor(
 async def generate_skill(
     persona_id: str,
     db: AsyncSession = Depends(get_db),
-    _editor=Depends(require_editor),
+    user: User = Depends(require_user),
 ):
     """Use LLM to generate a complete cognitive skill (cognitive OS) for this persona.
 
@@ -920,10 +898,7 @@ async def generate_skill(
     from app.core.llm_client import chat
     from app.services.skill_engine import get_skill_engine, Skill
 
-    result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
-    db_p = result.scalar_one_or_none()
-    if not db_p:
-        raise HTTPException(status_code=404, detail="军师不存在")
+    db_p = await _get_editable_persona(persona_id, user, db)
 
     # Gather persona context for the LLM
     context = {

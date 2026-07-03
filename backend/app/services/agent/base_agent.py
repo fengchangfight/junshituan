@@ -10,7 +10,7 @@ Streaming architecture:
 Session isolation:
 - thread_id = {session_id}_{persona_id} — unique per session
 - token_callback in config["configurable"] — request-scoped, never shared
-- SqliteSaver persists checkpoints to disk — survives restarts
+- PostgresCheckpointer persists checkpoints to database — survives restarts
 
 Graph:
   understand → retrieve → reason ──[simple]──→ END

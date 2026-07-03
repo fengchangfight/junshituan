@@ -14,7 +14,8 @@ import {
   AlertCircle,
   Loader2,
   BookOpen,
-  Eye,
+  Edit,
+  Settings,
   Sparkles,
   Zap,
 } from "lucide-react";
@@ -45,6 +46,8 @@ interface AdvisorDetail {
   kb_status: string;
   kb_doc_count: number;
   is_published: boolean;
+  visibility: string;
+  creator_id: string;
   documents: Doc[];
   thinking_framework?: {
     analysis?: string;
@@ -100,6 +103,7 @@ export default function AdvisorKBPage() {
   const [editConfig, setEditConfig] = useState<Record<string, any>>({});
   const [role, setRole] = useState("user");
   const isViewer = role === "viewer";
+  const isAdmin = role === "super_admin" || role === "admin";
 
   useEffect(() => {
     const t = localStorage.getItem("junshituan_token");
@@ -534,37 +538,30 @@ export default function AdvisorKBPage() {
             强制重建
           </motion.button>
 
-          {advisor.is_published ? (
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => handlePublish(false)}
-              disabled={isViewer || publishing}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600/20 border border-red-600/40 text-red-400 text-sm font-medium hover:bg-red-600/30 disabled:opacity-40"
-            >
-              取消发布
-            </motion.button>
-          ) : (
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => handlePublish(true)}
-              disabled={isViewer || publishing || (advisor.kb_status !== "ready" && !advisor.thinking_framework?.analysis && !advisor.skill_config)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 text-sm font-medium hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Send size={16} />
-              发布
-            </motion.button>
+          {isAdmin && advisor.visibility !== "private" && (
+            advisor.is_published ? (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handlePublish(false)}
+                disabled={isViewer || publishing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600/20 border border-red-600/40 text-red-400 text-sm font-medium hover:bg-red-600/30 disabled:opacity-40"
+              >
+                取消发布
+              </motion.button>
+            ) : (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handlePublish(true)}
+                disabled={isViewer || publishing || (advisor.kb_status !== "ready" && !advisor.thinking_framework?.analysis && !advisor.skill_config)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 text-sm font-medium hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Send size={16} />
+                发布
+              </motion.button>
+            )
           )}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setShowConfig(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ink-800 border border-ink-700 text-ink-300 text-sm font-medium hover:bg-ink-700 transition-colors"
-          >
-            <Eye size={16} />
-            能力预览
-          </motion.button>
         </div>
       </div>
 
@@ -601,12 +598,22 @@ export default function AdvisorKBPage() {
             </div>
           </div>
             {isViewer ? null : (
-              <button
-                onClick={() => { setEditingMeta(!editingMeta); setError(""); setSuccessMsg(""); }}
-                className="text-xs text-ink-400 hover:text-ink-300 transition-colors"
-              >
-                {editingMeta ? "取消" : "编辑信息"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setEditingMeta(!editingMeta); setError(""); setSuccessMsg(""); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-300 text-xs font-medium hover:bg-ink-700 hover:text-ink-200 transition-colors"
+                >
+                  <Edit size={14} />
+                  {editingMeta ? "取消" : "编辑基本信息"}
+                </button>
+                <button
+                  onClick={() => setShowConfig(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-300 text-xs font-medium hover:bg-ink-700 hover:text-ink-200 transition-colors"
+                >
+                  <Settings size={14} />
+                  能力配置
+                </button>
+              </div>
             )}
         </div>
 

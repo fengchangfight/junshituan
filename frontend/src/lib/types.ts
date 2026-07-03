@@ -10,6 +10,8 @@ export interface Advisor {
   kb_status?: string;
   kb_doc_count?: number;
   is_published?: boolean;
+  visibility?: string;
+  creator_id?: string;
 }
 
 export interface Council {
