@@ -16,6 +16,10 @@ except ImportError:
     build_default_analyzer = None
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+log = get_logger("milvus_store")
+
 
 COLLECTION_NAME = "junshituan_knowledge"
 
@@ -198,21 +202,21 @@ class MilvusStore:
         top_k: int = 5,
         query_sparse_vec: Optional[dict] = None,
     ) -> list[dict]:
-        print(f"[DEBUG milvus] search START persona={persona_id} top_k={top_k} has_sparse={query_sparse_vec is not None}", flush=True)
+        log.debug(f"search START persona={persona_id} top_k={top_k} has_sparse={query_sparse_vec is not None}")
         self._lazy_init()
         try:
             if not self.client.has_collection(COLLECTION_NAME):
-                print(f"[DEBUG milvus] collection {COLLECTION_NAME} not found", flush=True)
+                log.debug(f"collection {COLLECTION_NAME} not found")
                 return []
             self._ensure_loaded()
             if query_sparse_vec:
                 result = self._hybrid_search(persona_id, query_embedding, query_sparse_vec, top_k)
             else:
                 result = self._dense_search(persona_id, query_embedding, top_k)
-            print(f"[DEBUG milvus] search DONE, got {len(result)} results", flush=True)
+            log.debug(f"search DONE, got {len(result)} results")
             return result
         except Exception as e:
-            print(f"[Milvus] search error for {persona_id}: {e}", flush=True)
+            log.debug(f"search error for {persona_id}: {e}")
             import traceback
             traceback.print_exc()
             return []

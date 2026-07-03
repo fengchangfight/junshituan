@@ -5,6 +5,10 @@ from typing import Optional
 from openai import AsyncOpenAI, OpenAI
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+log = get_logger("embedding")
+
 
 
 def _make_async_client() -> AsyncOpenAI:
@@ -59,16 +63,16 @@ class EmbeddingProvider:
         return [d.embedding for d in resp.data]
 
     async def embed_single(self, text: str) -> list[float]:
-        print(f"[DEBUG embed] embed_single START text_len={len(text)}", flush=True)
+        log.debug(f"embed_single START text_len={len(text)}")
         await self._ensure_ready()
         client = _make_async_client()
-        print(f"[DEBUG embed] embed_single calling {settings.embedding_base_url} model={settings.embedding_model}...", flush=True)
+        log.debug(f"embed_single calling {settings.embedding_base_url} model={settings.embedding_model}...")
         resp = await client.embeddings.create(
             model=settings.embedding_model,
             input=[text],
         )
         emb = resp.data[0].embedding
-        print(f"[DEBUG embed] embed_single DONE dim={len(emb)}", flush=True)
+        log.debug(f"embed_single DONE dim={len(emb)}")
         return emb
 
     async def ensure_ready(self):

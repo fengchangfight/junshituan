@@ -5,6 +5,10 @@ from typing import AsyncIterator, Optional
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+log = get_logger("llm")
+
 
 _client: Optional[AsyncOpenAI] = None
 
@@ -55,7 +59,7 @@ async def chat_stream(
             temperature=temperature,
             stream=True,
         )
-    print(f"[DEBUG llm] chat_stream request sent to {settings.openai_base_url} model={settings.llm_model}, waiting for chunks...", flush=True)
+    log.debug(f"chat_stream request sent to {settings.openai_base_url} model={settings.llm_model}, waiting for chunks...")
 
     usage = usage_out or StreamResult()
     first_token = True
@@ -69,18 +73,18 @@ async def chat_stream(
                     if delta.content:
                         if first_token:
                             first_token = False
-                            print(f"[TIMING llm] TTFT={(time.perf_counter() - t_start)*1000:.0f}ms", flush=True)
+                            log.timing(f"TTFT={(time.perf_counter() - t_start)*1000:.0f}ms")
                         yield delta.content
                 if chunk.usage:
                     usage.input_tokens = chunk.usage.prompt_tokens or 0
                     usage.output_tokens = chunk.usage.completion_tokens or 0
         except Exception as e:
-            print(f"[DEBUG llm] chat_stream EXCEPTION: {type(e).__name__}: {e}", flush=True)
+            log.debug(f"chat_stream EXCEPTION: {type(e).__name__}: {e}")
             raise
 
     async for token in token_gen():
         yield token
-    print(f"[TIMING llm] chat_stream total={(time.perf_counter() - t_start)*1000:.0f}ms input_tokens={usage.input_tokens} output_tokens={usage.output_tokens}", flush=True)
+    log.timing(f"chat_stream total={(time.perf_counter() - t_start)*1000:.0f}ms input_tokens={usage.input_tokens} output_tokens={usage.output_tokens}")
 
 
 async def chat(

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from app.core.logging import get_logger
 from app.tools import BaseTool, ToolResult
+
+log = get_logger("web_search")
 
 
 class WebSearchTool(BaseTool):
@@ -43,8 +46,10 @@ class WebSearchTool(BaseTool):
 
     async def execute(self, query: str, max_results: int = 5) -> ToolResult:
         """Perform a DuckDuckGo text search."""
+        import asyncio, time
+        t0 = time.perf_counter()
         max_results = min(max(1, max_results), 10)
-        print(f"[DEBUG web_search] START query='{query}' max_results={max_results}", flush=True)
+        log.debug(f"START query='{query}' max_results={max_results}")
 
         try:
             from ddgs import DDGS
@@ -52,21 +57,26 @@ class WebSearchTool(BaseTool):
             try:
                 from duckduckgo_search import DDGS
             except ImportError:
-                print(f"[DEBUG web_search] neither ddgs nor duckduckgo_search installed", flush=True)
                 return ToolResult(
-                    content="Error: search library not installed. "
-                    "Install it with: pip install ddgs"
+                    content="Error: search library not installed. Install: pip install ddgs"
                 )
 
-        print(f"[DEBUG web_search] query='{query}' max_results={max_results}", flush=True)
         try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=max_results))
+            # Run sync DDGS in thread pool with 15s timeout
+            loop = asyncio.get_running_loop()
+            results = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: list(DDGS().text(query, max_results=max_results))),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError:
+            log.timing(f"TIMEOUT after 15s query='{query}'")
+            return ToolResult(content=f"Search timed out for: '{query}'. Try a more specific query.")
         except Exception as exc:
-            print(f"[DEBUG web_search] ERROR: {type(exc).__name__}: {exc}", flush=True)
+            log.error(f"{type(exc).__name__}: {exc} in {(time.perf_counter()-t0)*1000:.0f}ms")
             return ToolResult(content=f"Web search failed: {exc}")
 
-        print(f"[DEBUG web_search] got {len(results)} results", flush=True)
+        elapsed = (time.perf_counter() - t0) * 1000
+        log.timing(f"DONE {len(results)} results in {elapsed:.0f}ms query='{query[:60]}'")
 
         if not results:
             return ToolResult(content=f"No results found for query: '{query}'")

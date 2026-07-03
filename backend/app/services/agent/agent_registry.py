@@ -1,3 +1,7 @@
+from app.core.logging import get_logger
+
+log = get_logger("registry")
+
 """Agent registry — manages lifecycle of advisor agent instances.
 
 Each advisor gets one agent instance. The registry ensures:
@@ -30,7 +34,7 @@ class AgentRegistry:
             self._bump_access(persona_id)
             return self._agents[persona_id]
 
-        print(f"[DEBUG registry] get_or_create cache MISS for {persona_id}, creating...", flush=True)
+        log.debug(f"get_or_create cache MISS for {persona_id}, creating...")
 
         if len(self._agents) >= self._MAX_AGENTS:
             oldest = self._access_order[0]
@@ -39,20 +43,20 @@ class AgentRegistry:
         engine = get_persona_engine()
         persona = engine.get(persona_id)
         if not persona:
-            print(f"[DEBUG registry] persona {persona_id} not found", flush=True)
+            log.debug(f"persona {persona_id} not found")
             return None
-        print(f"[DEBUG registry] creating agent for {persona.name} kb_doc_count={persona.kb_doc_count}", flush=True)
+        log.debug(f"creating agent for {persona.name} kb_doc_count={persona.kb_doc_count}")
 
         # Skip Milvus entirely when persona has zero documents (saves ~1.4s)
         if persona.kb_doc_count > 0:
             async def retrieve_knowledge(query: str) -> list[str]:
-                print(f"[DEBUG registry] retrieve_knowledge START persona={persona_id} query={query[:60]}", flush=True)
+                log.debug(f"retrieve_knowledge START persona={persona_id} query={query[:60]}")
                 docs = await ingest_pipeline.search(persona_id, query, top_k=5)
-                print(f"[DEBUG registry] retrieve_knowledge DONE persona={persona_id} got {len(docs)} docs", flush=True)
+                log.debug(f"retrieve_knowledge DONE persona={persona_id} got {len(docs)} docs")
                 return [d["text"] for d in docs]
         else:
             async def retrieve_knowledge(query: str) -> list[str]:
-                print(f"[TIMING registry] retrieve_knowledge SKIPPED (no docs) persona={persona_id}", flush=True)
+                log.timing(f"retrieve_knowledge SKIPPED (no docs) persona={persona_id}")
                 return []
 
         # Build skill-enhanced system prompt
@@ -102,18 +106,18 @@ class AgentRegistry:
         on_tool_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         history: Optional[list[dict]] = None,
     ) -> str:
-        print(f"[DEBUG registry] ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume} streaming={on_token is not None} history_len={len(history) if history else 0}", flush=True)
+        log.debug(f"ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume} streaming={on_token is not None} history_len={len(history) if history else 0}")
         agent = self.get_or_create(persona_id)
         if not agent:
             return f"[{persona_id}] 该军师尚未配置。"
 
-        print(f"[DEBUG registry] calling agent.{'resume' if is_resume else 'run'}...", flush=True)
+        log.debug(f"calling agent.{'resume' if is_resume else 'run'}...")
         t0 = time.perf_counter()
         if is_resume:
             result = await agent.resume(session_id, user_id, question, on_token=on_token, on_tool_progress=on_tool_progress, history=history)
         else:
             result = await agent.run(session_id, user_id, question, on_token=on_token, on_tool_progress=on_tool_progress, history=history)
-        print(f"[TIMING registry] ask_advisor took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+        log.timing(f"ask_advisor took {(time.perf_counter() - t0)*1000:.0f}ms")
         return result
 
     def remove(self, persona_id: str):

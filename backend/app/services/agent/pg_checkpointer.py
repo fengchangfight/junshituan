@@ -1,3 +1,7 @@
+from app.core.logging import get_logger
+
+log = get_logger("pg_ckpt")
+
 """PostgreSQL-backed LangGraph checkpointer — persists across restarts.
 
 Extends InMemorySaver (native async support) and syncs to agent_checkpoints table.
@@ -74,7 +78,7 @@ class PostgresCheckpointer(InMemorySaver):
                     parent_config=data.get("parent_config"),
                 )
         except Exception as e:
-            print(f"[pg_checkpointer] aget_tuple DB fallback error: {e}", flush=True)
+            log.debug(f"aget_tuple DB fallback error: {e}")
             return None
 
     async def aput(
@@ -103,6 +107,6 @@ class PostgresCheckpointer(InMemorySaver):
                     db, session_id, advisor_id, data
                 )
         except Exception as e:
-            print(f"[pg_checkpointer] aput sync error: {e}", flush=True)
+            log.debug(f"aput sync error: {e}")
 
         return result

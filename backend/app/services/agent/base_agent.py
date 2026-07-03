@@ -25,6 +25,10 @@ from typing import TypedDict, Annotated, Literal, Optional, Callable, Awaitable
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from app.core.logging import get_logger
+
+log = get_logger("agent")
+
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -304,18 +308,18 @@ class AdvisorAgentGraph:
         t0 = time.perf_counter()
         msgs = state.get("messages", [])
         last_msg = msgs[-1].content if msgs else ""
-        print(f"[TIMING agent:{self.persona_id}] _understand took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+        log.timing(f"_understand took {(time.perf_counter() - t0)*1000:.0f}ms")
         return {"retrieval_query": last_msg}
 
     async def _retrieve(self, state: AgentState) -> dict:
         t0 = time.perf_counter()
         query = state.get("retrieval_query", "")
         if self.retrieve_fn and query:
-            print(f"[DEBUG agent:{self.persona_id}] _retrieve calling retrieve_fn...", flush=True)
+            log.debug(f"_retrieve calling retrieve_fn...")
             docs = await self.retrieve_fn(query)
-            print(f"[TIMING agent:{self.persona_id}] _retrieve took {(time.perf_counter() - t0)*1000:.0f}ms, got {len(docs)} docs", flush=True)
+            log.timing(f"_retrieve took {(time.perf_counter() - t0)*1000:.0f}ms, got {len(docs)} docs")
             return {"retrieved_docs": docs}
-        print(f"[TIMING agent:{self.persona_id}] _retrieve skipped {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+        log.timing(f"_retrieve skipped {(time.perf_counter() - t0)*1000:.0f}ms")
         return {"retrieved_docs": []}
 
     async def _reason(self, state: AgentState, config: RunnableConfig) -> dict:
@@ -323,7 +327,8 @@ class AdvisorAgentGraph:
         to prompt-based reasoning otherwise. Token callback from config."""
         t0 = time.perf_counter()
         token_cb = self._get_callback(config)
-        print(f"[DEBUG agent:{self.persona_id}] _reason START streaming={token_cb is not None}", flush=True)
+        rounds = state.get("tool_rounds", 0)
+        log.timing(f"_reason ENTER streaming={token_cb is not None} rounds={rounds}")
 
         docs = state.get("retrieved_docs", [])
         docs_text = "\n---\n".join(docs[:5]) if docs else ""
@@ -362,13 +367,18 @@ class AdvisorAgentGraph:
 
             # Splice in prior tool messages (assistant tool_calls + tool results)
             api_messages.extend(tool_msgs)
-            print(f"[DEBUG agent:{self.persona_id}] _reason re-entry: tool_msgs={len(tool_msgs)} rounds={rounds}", flush=True)
+            log.debug(f"_reason re-entry: tool_msgs={len(tool_msgs)} rounds={rounds}")
 
             # Append the actual user question
             api_messages.append({"role": "user", "content": question})
 
+            # Signal frontend early — avoid staring at "thinking..." for TTFT
+            if rounds == 0 and token_cb:
+                await token_cb("📚")
+
             from app.core.llm_client import chat_with_tools
 
+            t_llm = time.perf_counter()
             result = await chat_with_tools(
                 messages=api_messages,
                 tools=tools,
@@ -376,7 +386,7 @@ class AdvisorAgentGraph:
             )
 
             if result.tool_calls:
-                print(f"[DEBUG agent:{self.persona_id}] _reason tool_calls={[tc['name'] for tc in result.tool_calls]}", flush=True)
+                log.timing(f"_reason LLM decided tool_calls={[tc['name'] for tc in result.tool_calls]} in {(time.perf_counter()-t_llm)*1000:.0f}ms")
                 import json as _json
                 # Build assistant message; splice into tool_messages later with results
                 tool_asm: dict = {
@@ -430,7 +440,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 3. response 150-400字，简洁有力
 4. 可引用著作或名言，但点到为止"""
 
-            print(f"[DEBUG agent:{self.persona_id}] _reason conv_msgs={len(msgs)-1} calling chat_stream...", flush=True)
+            log.debug(f"_reason conv_msgs={len(msgs)-1} calling chat_stream...")
             parser = StreamTagParser(["complexity", "reasoning", "response"])
             raw = ""
             async for token in chat_stream(
@@ -472,7 +482,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
                 await token_cb(response[i:i+2])
                 await asyncio.sleep(0.015)
 
-        print(f"[TIMING agent:{self.persona_id}] _reason took {(time.perf_counter() - t0)*1000:.0f}ms complexity={complexity} response={len(response)}chars rounds={rounds}", flush=True)
+        log.timing(f"_reason took {(time.perf_counter() - t0)*1000:.0f}ms complexity={complexity} response={len(response)}chars rounds={rounds}")
 
         return {
             "reasoning": reasoning,
@@ -487,7 +497,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         """Polish final response for complex questions. Streams tokens directly."""
         t0 = time.perf_counter()
         token_cb = self._get_callback(config)
-        print(f"[DEBUG agent:{self.persona_id}] _respond START (complex)", flush=True)
+        log.debug(f"_respond START (complex)")
 
         reasoning = state.get("reasoning", "")
         docs = state.get("retrieved_docs", [])
@@ -516,7 +526,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 2. 200-500字，有深度但不冗长
 3. 重点回应最近讨论的观点"""
 
-        print(f"[DEBUG agent:{self.persona_id}] _respond conv_msgs={len(msgs)-1} calling chat_stream...", flush=True)
+        log.debug(f"_respond conv_msgs={len(msgs)-1} calling chat_stream...")
         full = ""
         async for token in chat_stream(
             system_prompt="",
@@ -527,12 +537,12 @@ complexity=complex：需要多步推理、对比分析、数学计算。
             if token_cb:
                 await token_cb(token)
 
-        print(f"[TIMING agent:{self.persona_id}] _respond took {(time.perf_counter() - t0)*1000:.0f}ms response={len(full)}chars", flush=True)
+        log.timing(f"_respond took {(time.perf_counter() - t0)*1000:.0f}ms response={len(full)}chars")
         return {"final_response": full}
 
     async def _compress(self, state: AgentState) -> dict:
         t0 = time.perf_counter()
-        print(f"[TIMING agent:{self.persona_id}] _compress START", flush=True)
+        log.timing(f"_compress START")
         msgs = state.get("messages", [])
         if len(msgs) <= 4:
             return {}
@@ -551,7 +561,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         ):
             summary += token
 
-        print(f"[TIMING agent:{self.persona_id}] _compress took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+        log.timing(f"_compress took {(time.perf_counter() - t0)*1000:.0f}ms")
         return {"context_summary": summary, "messages": msgs[-2:]}
 
     # ── Edges ──────────────────────────────────────────────────────────────
@@ -575,13 +585,13 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         rounds = state.get("tool_rounds", 0)
         tool_msgs: list[dict] = list(state.get("tool_messages") or [])
         tool_cb = self._get_tool_callback(config) or _ctx_tool_callback.get()
-        print(f"[DEBUG agent:{self.persona_id}] _tool_call tool_cb={'SET' if tool_cb else 'NONE'} pending={len(pending)}", flush=True)
+        log.debug(f"_tool_call tool_cb={'SET' if tool_cb else 'NONE'} pending={len(pending)}")
 
         for tc in pending:
             name = tc["name"]
             args = tc.get("arguments", {})
             call_id = tc.get("id", "")
-            print(f"[DEBUG agent:{self.persona_id}] _tool_call executing {name} id={call_id}", flush=True)
+            log.debug(f"_tool_call executing {name} id={call_id}")
 
             # Notify frontend: search starting
             if tool_cb:
@@ -594,7 +604,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
             res = await tool_registry.execute(name, args)
             result_count = len(res.data.get("results", [])) if res.data else 0
             content_preview = res.content[:80].replace("\n", " ") if res.content else "(empty)"
-            print(f"[DEBUG agent:{self.persona_id}] _tool_call DONE {name} results={result_count} content={content_preview}", flush=True)
+            log.debug(f"_tool_call DONE {name} results={result_count} content={content_preview}")
 
             # Notify frontend: search done
             if tool_cb:
@@ -650,7 +660,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         history: optional conversation history for context injection.
         """
         _ctx_tool_callback.set(on_tool_progress)
-        print(f"[DEBUG agent:{self.persona_id}] run() tool_cb={'SET' if on_tool_progress else 'NONE'}", flush=True)
+        log.debug(f"run() tool_cb={'SET' if on_tool_progress else 'NONE'}")
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": f"{session_id}_{self.persona_id}",
@@ -678,17 +688,17 @@ complexity=complex：需要多步推理、对比分析、数学计算。
             "final_response": "",
         }
 
-        print(f"[DEBUG agent:{self.persona_id}] run() session={session_id} streaming={on_token is not None}", flush=True)
+        log.debug(f"run() session={session_id} streaming={on_token is not None}")
         t0 = time.perf_counter()
         try:
             result = await asyncio.wait_for(
                 self.graph.ainvoke(initial_state, config),
                 timeout=timeout,
             )
-            print(f"[TIMING agent:{self.persona_id}] run() total={(time.perf_counter() - t0)*1000:.0f}ms complexity={result.get('complexity', '?')}", flush=True)
+            log.timing(f"run() total={(time.perf_counter() - t0)*1000:.0f}ms complexity={result.get('complexity', '?')}")
             return result.get("final_response", "")
         except asyncio.TimeoutError:
-            print(f"[DEBUG agent:{self.persona_id}] run() TIMEOUT", flush=True)
+            log.debug(f"run() TIMEOUT")
             return f"[思考超时] {self.persona_name}思考时间过长，请稍后再试或简化问题。"
 
     async def resume(
@@ -704,7 +714,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         Otherwise builds context from the session's conversation history (DB).
         This ensures advisors joining mid-conversation see the full discussion.
         """
-        print(f"[DEBUG agent:{self.persona_id}] resume() START session={session_id} has_history={history is not None}", flush=True)
+        log.debug(f"resume() START session={session_id} has_history={history is not None}")
         _ctx_tool_callback.set(on_tool_progress)
         config: RunnableConfig = {
             "configurable": {
@@ -716,7 +726,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 
         ckpt_tuple = await self.checkpointer.aget_tuple(config)
         if ckpt_tuple:
-            print(f"[DEBUG agent:{self.persona_id}] resume() found checkpoint, loading...", flush=True)
+            log.debug(f"resume() found checkpoint, loading...")
             saved_channels = ckpt_tuple[1].get("channel_values", {})
             state = {
                 "messages": saved_channels.get("messages", []),
@@ -768,10 +778,10 @@ complexity=complex：需要多步推理、对比分析、数学计算。
                 self.graph.ainvoke(state, config),
                 timeout=timeout,
             )
-            print(f"[TIMING agent:{self.persona_id}] resume() total={(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+            log.timing(f"resume() total={(time.perf_counter() - t0)*1000:.0f}ms")
             return result.get("final_response", "")
         except asyncio.TimeoutError:
-            print(f"[DEBUG agent:{self.persona_id}] resume() TIMEOUT", flush=True)
+            log.debug(f"resume() TIMEOUT")
             return f"[思考超时] {self.persona_name}思考时间过长，请稍后再试或简化问题。"
 
     @staticmethod

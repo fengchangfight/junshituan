@@ -19,6 +19,10 @@ from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core.ingestion import DocstoreStrategy
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+log = get_logger("pipeline")
+
 from app.core.embedding import embedding_provider
 from app.services.ingestion.milvus_store import milvus_store
 from app.services.ingestion.milvus_hybrid_vs import MilvusHybridVectorStore
@@ -125,22 +129,22 @@ class IngestionPipelineService:
         return len(nodes)
 
     async def search(self, persona_id: str, query: str, top_k: int = 5) -> list[dict]:
-        print(f"[DEBUG pipeline] search START persona={persona_id} query={query[:60]}", flush=True)
+        log.debug(f"search START persona={persona_id} query={query[:60]}")
         embedding = await embedding_provider.embed_single(query)
         if not embedding:
-            print(f"[DEBUG pipeline] search no embedding returned", flush=True)
+            log.debug(f"search no embedding returned")
             return []
-        print(f"[DEBUG pipeline] search embedding done, dim={len(embedding)}", flush=True)
+        log.debug(f"search embedding done, dim={len(embedding)}")
         try:
             sparse_vecs = milvus_store.encode_query_sparse([query])
             sparse_vec = sparse_vecs[0] if sparse_vecs else None
         except Exception as e:
-            print(f"[DEBUG pipeline] sparse encoding failed: {e}", flush=True)
+            log.debug(f"sparse encoding failed: {e}")
             sparse_vec = None
         result = milvus_store.search(
             persona_id, embedding, top_k=top_k, query_sparse_vec=sparse_vec,
         )
-        print(f"[DEBUG pipeline] search DONE, {len(result)} results", flush=True)
+        log.debug(f"search DONE, {len(result)} results")
         return result
 
     async def _get_dim(self) -> int:

@@ -1,3 +1,7 @@
+from app.core.logging import get_logger
+
+log = get_logger("council")
+
 """Meeting room orchestration service.
 
 Handles:
@@ -151,23 +155,23 @@ class CouncilService:
         Each subsequent advisor sees accumulated context from prior responses.
         """
         t0 = time.perf_counter()
-        print(f"[TIMING council] ask_council START session={session_id} user={user_id} question={question[:80]}", flush=True)
+        log.timing(f"ask_council START session={session_id} user={user_id} question={question[:80]}")
         session = await self.get_session(db, session_id, user_id)
-        print(f"[TIMING council] get_session took {(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+        log.timing(f"get_session took {(time.perf_counter() - t0)*1000:.0f}ms")
         if not session:
-            print(f"[DEBUG council] session not found", flush=True)
+            log.debug(f"session not found")
             yield AskEvent(advisor_id="system", content="会话不存在或已过期", done=True)
             return
 
         advisor_ids = session.advisor_ids or []
-        print(f"[DEBUG council] advisor_ids={advisor_ids}", flush=True)
+        log.debug(f"advisor_ids={advisor_ids}")
         if target_advisor_ids:
             valid = [a for a in target_advisor_ids if a in advisor_ids]
             if not valid:
                 yield AskEvent(advisor_id="system", content="指定的军师不在议事厅中", done=True)
                 return
             advisor_ids = valid
-            print(f"[DEBUG council] multi-target mode: {len(advisor_ids)} advisors", flush=True)
+            log.debug(f"multi-target mode: {len(advisor_ids)} advisors")
         budget = budget_manager.get(session_id)
 
         if budget.over_budget:
@@ -202,7 +206,7 @@ class CouncilService:
             metadata={"type": "budget", "budget": budget.to_dict()},
             done=False,
         )
-        print(f"[TIMING council] pre-advisor setup took {(time.perf_counter() - t0)*1000:.0f}ms total", flush=True)
+        log.timing(f"pre-advisor setup took {(time.perf_counter() - t0)*1000:.0f}ms total")
 
         # Load conversation history BEFORE saving the current user message.
         # This ensures history contains only prior messages, not the current
@@ -217,14 +221,14 @@ class CouncilService:
                 {"role": m.role, "content": m.content, "advisor_name": m.advisor_name or ""}
                 for m in history_msgs
             ]
-            print(f"[TIMING council] loaded {len(conversation_history)} history messages", flush=True)
+            log.timing(f"loaded {len(conversation_history)} history messages")
 
         # Save user message
         t1 = time.perf_counter()
         await session_store.add_message(
             db, session_id, role="user", content=question
         )
-        print(f"[TIMING council] save_user_msg took {(time.perf_counter() - t1)*1000:.0f}ms", flush=True)
+        log.timing(f"save_user_msg took {(time.perf_counter() - t1)*1000:.0f}ms")
 
         # Retrieve user memories for context (session-scoped)
         t2 = time.perf_counter()
@@ -235,7 +239,7 @@ class CouncilService:
         else:
             memory_context = ""
             memories = []
-        print(f"[TIMING council] retrieve_memories took {(time.perf_counter() - t2)*1000:.0f}ms, got {len(memories)} memories, injected={bool(memory_context)}", flush=True)
+        log.timing(f"retrieve_memories took {(time.perf_counter() - t2)*1000:.0f}ms, got {len(memories)} memories, injected={bool(memory_context)}")
 
         enhanced_question = question
         if memory_context:
@@ -249,7 +253,7 @@ class CouncilService:
 
         async def ask_one(advisor_id: str):
             nonlocal total_response_chars
-            print(f"[DEBUG council] ask_one START advisor={advisor_id}", flush=True)
+            log.debug(f"ask_one START advisor={advisor_id}")
             try:
                 from app.services.persona_engine import get_persona_engine
                 engine = get_persona_engine()
@@ -284,7 +288,7 @@ class CouncilService:
                     ),
                     on_tool_progress=_on_tool_progress,
                 )
-                print(f"[DEBUG council] ask_one got response from {advisor_id}: len={len(response)} streamed in {(time.perf_counter() - t_stream)*1000:.0f}ms", flush=True)
+                log.debug(f"ask_one got response from {advisor_id}: len={len(response)} streamed in {(time.perf_counter() - t_stream)*1000:.0f}ms")
 
                 total_response_chars += len(response)
 
@@ -299,7 +303,7 @@ class CouncilService:
                 import traceback
                 tb = traceback.format_exc()
                 safe_tb = tb[:500].encode('ascii', errors='replace').decode('ascii')
-                print(f"[DEBUG council] EXCEPTION {advisor_id}: {e}\n{safe_tb}", flush=True)
+                log.debug(f"EXCEPTION {advisor_id}: {e}\n{safe_tb}")
                 await queue.put(AskEvent(
                     advisor_id=advisor_id, advisor_name=advisor_id,
                     content=f"\n[思考受阻：{e}]",
@@ -328,7 +332,7 @@ class CouncilService:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=300.0)
                 except asyncio.TimeoutError:
-                    print(f"[DEBUG council] TIMEOUT waiting for done event from {advisor_id}", flush=True)
+                    log.debug(f"TIMEOUT waiting for done event from {advisor_id}")
                     yield AskEvent(
                         advisor_id=advisor_id, advisor_name="",
                         content="\n[回答超时]", done=True,
@@ -343,7 +347,7 @@ class CouncilService:
                     persona = engine.get(advisor_id)
                     advisor_name = persona.name if persona else advisor_id
                     accumulated_context += f"[{advisor_name}]: {advisor_response_text}\n"
-                    print(f"[TIMING council] advisor {advisor_id} total took {(time.perf_counter() - t_adv)*1000:.0f}ms", flush=True)
+                    log.timing(f"advisor {advisor_id} total took {(time.perf_counter() - t_adv)*1000:.0f}ms")
                     break
 
         # Record usage
@@ -370,7 +374,7 @@ class CouncilService:
             session_id, user_id, pending_db_writes, total_response_chars, budget.over_budget,
         ))
         self._pending_persists[session_id] = task
-        print(f"[TIMING council] ask_council DONE total={(time.perf_counter() - t0)*1000:.0f}ms", flush=True)
+        log.timing(f"ask_council DONE total={(time.perf_counter() - t0)*1000:.0f}ms")
 
     async def _background_persist(
         self, session_id: str, user_id: str,
@@ -407,7 +411,7 @@ class CouncilService:
                     session_id, user_id, total_chars
                 )
         except Exception as e:
-            print(f"[DEBUG council] background persist failed: {e}", flush=True)
+            log.debug(f"background persist failed: {e}")
 
     async def _background_extract_memories(self, session_id, user_id, total_chars):
         """Run memory extraction with its own DB session."""
@@ -434,7 +438,7 @@ class CouncilService:
                         await session_store.update_summary(db, session_id, summary)
                 await user_memory_service.consolidate(db, user_id)
         except Exception as e:
-            print(f"[DEBUG council] background memory extraction failed: {e}", flush=True)
+            log.debug(f"background memory extraction failed: {e}")
 
 council_service = CouncilService()
 
