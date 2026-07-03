@@ -18,7 +18,6 @@ from app.services.agent.base_agent import AdvisorAgentGraph
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.persona_engine import get_persona_engine
 
-
 class AgentRegistry:
     """Manages active advisor agent instances."""
 
@@ -106,12 +105,10 @@ class AgentRegistry:
         on_tool_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         history: Optional[list[dict]] = None,
     ) -> str:
-        log.debug(f"ask_advisor START persona={persona_id} session={session_id} is_resume={is_resume} streaming={on_token is not None} history_len={len(history) if history else 0}")
         agent = self.get_or_create(persona_id)
         if not agent:
             return f"[{persona_id}] 该军师尚未配置。"
 
-        log.debug(f"calling agent.{'resume' if is_resume else 'run'}...")
         t0 = time.perf_counter()
         if is_resume:
             result = await agent.resume(session_id, user_id, question, on_token=on_token, on_tool_progress=on_tool_progress, history=history)
@@ -136,6 +133,5 @@ class AgentRegistry:
         self._agents.pop(persona_id, None)
         if persona_id in self._access_order:
             self._access_order.remove(persona_id)
-
 
 agent_registry = AgentRegistry()

@@ -146,6 +146,10 @@ class AddAdvisorsRequest(BaseModel):
     advisor_ids: list[str] = Field(min_length=1, max_length=12)
 
 
+class RenameSessionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=256)
+
+
 class AskEvent(BaseModel):
     advisor_id: str
     advisor_name: str = ""

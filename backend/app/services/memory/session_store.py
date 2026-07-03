@@ -217,6 +217,14 @@ class SessionStore:
             await db.delete(session)
             await db.commit()
 
+    async def rename_session(self, db: AsyncSession, session_id: str, title: str):
+        """Rename a session."""
+        result = await db.execute(select(Session).where(Session.id == session_id))
+        session = result.scalar_one_or_none()
+        if session:
+            session.title = title
+            await db.commit()
+
     async def cleanup_expired(self, db: AsyncSession):
         """Remove sessions past TTL."""
         cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.session_ttl_hours)

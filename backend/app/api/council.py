@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.db_models import User
-from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest
+from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest, RenameSessionRequest
 from app.core.security import require_user
 from app.services.council_service import council_service
 from app.services.persona_engine import get_persona_engine
@@ -59,6 +59,22 @@ async def delete_session(
     if not deleted:
         raise HTTPException(status_code=404, detail="会话不存在或无权操作")
     return {"status": "deleted"}
+
+
+@router.patch("/sessions/{session_id}")
+async def rename_session(
+    session_id: str,
+    req: RenameSessionRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Rename a council session."""
+    from app.services.memory.session_store import session_store
+    session = await council_service.get_session(db, session_id, user.id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在或无权操作")
+    await session_store.rename_session(db, session_id, req.title.strip())
+    return {"status": "ok", "title": req.title.strip()}
 
 
 @router.put("/sessions/{session_id}/advisors")

@@ -38,7 +38,6 @@ from app.core.llm_client import chat_stream
 
 # ── Persistent Checkpointer ──────────────────────────────────────────────
 
-
 def _get_checkpointer() -> BaseCheckpointSaver:
     """Create a PostgresCheckpointer — stateless, safe to call repeatedly."""
     from app.services.agent.pg_checkpointer import PostgresCheckpointer
@@ -116,7 +115,6 @@ class StreamTagParser:
     def is_done(self) -> bool:
         return len(self._done_tags) == len(self.tags)
 
-
 # ── State ──────────────────────────────────────────────────────────────────
 
 class AgentState(TypedDict):
@@ -154,7 +152,6 @@ _ctx_tool_callback: contextvars.ContextVar[Optional[Callable[[dict], Awaitable[N
     contextvars.ContextVar("tool_callback", default=None)
 _ctx_use_web_search: contextvars.ContextVar[bool] = \
     contextvars.ContextVar("use_web_search", default=True)
-
 
 # ── Agent Graph Builder ────────────────────────────────────────────────────
 
@@ -317,7 +314,6 @@ class AdvisorAgentGraph:
         t0 = time.perf_counter()
         query = state.get("retrieval_query", "")
         if self.retrieve_fn and query:
-            log.debug(f"_retrieve calling retrieve_fn...")
             docs = await self.retrieve_fn(query)
             log.timing(f"_retrieve took {(time.perf_counter() - t0)*1000:.0f}ms, got {len(docs)} docs")
             return {"retrieved_docs": docs}
@@ -370,7 +366,6 @@ class AdvisorAgentGraph:
 
             # Splice in prior tool messages (assistant tool_calls + tool results)
             api_messages.extend(tool_msgs)
-            log.debug(f"_reason re-entry: tool_msgs={len(tool_msgs)} rounds={rounds}")
 
             # Append the actual user question
             api_messages.append({"role": "user", "content": question})
@@ -443,7 +438,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 3. response 150-400字，简洁有力
 4. 可引用著作或名言，但点到为止"""
 
-            log.debug(f"_reason conv_msgs={len(msgs)-1} calling chat_stream...")
             parser = StreamTagParser(["complexity", "reasoning", "response"])
             raw = ""
             async for token in chat_stream(
@@ -500,7 +494,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         """Polish final response for complex questions. Streams tokens directly."""
         t0 = time.perf_counter()
         token_cb = self._get_callback(config)
-        log.debug(f"_respond START (complex)")
 
         reasoning = state.get("reasoning", "")
         docs = state.get("retrieved_docs", [])
@@ -529,7 +522,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 2. 200-500字，有深度但不冗长
 3. 重点回应最近讨论的观点"""
 
-        log.debug(f"_respond conv_msgs={len(msgs)-1} calling chat_stream...")
         full = ""
         async for token in chat_stream(
             system_prompt="",
@@ -663,7 +655,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         history: optional conversation history for context injection.
         """
         _ctx_tool_callback.set(on_tool_progress)
-        log.debug(f"run() tool_cb={'SET' if on_tool_progress else 'NONE'}")
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": f"{session_id}_{self.persona_id}",
@@ -717,7 +708,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         Otherwise builds context from the session's conversation history (DB).
         This ensures advisors joining mid-conversation see the full discussion.
         """
-        log.debug(f"resume() START session={session_id} has_history={history is not None}")
         _ctx_tool_callback.set(on_tool_progress)
         config: RunnableConfig = {
             "configurable": {
@@ -729,7 +719,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 
         ckpt_tuple = await self.checkpointer.aget_tuple(config)
         if ckpt_tuple:
-            log.debug(f"resume() found checkpoint, loading...")
             saved_channels = ckpt_tuple[1].get("channel_values", {})
             # Merge checkpoint messages with full conversation history.
             # The checkpoint only has THIS advisor's thread; other advisors'

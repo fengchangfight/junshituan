@@ -124,6 +124,15 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error("删除失败");
 }
 
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error("重命名失败");
+}
+
 export async function addAdvisorsToSession(
   sessionId: string,
   advisorIds: string[]

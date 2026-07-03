@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { fetchSessions, deleteSession } from "@/lib/api";
+import { fetchSessions, deleteSession, renameSession } from "@/lib/api";
 import { SessionDetail } from "@/lib/types";
-import { ArrowLeft, Loader2, MessageSquare, Clock, ChevronRight, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Clock, ChevronRight, Trash2, Pencil } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal/ConfirmModal";
 
 export default function SessionsPage() {
@@ -15,6 +15,8 @@ export default function SessionsPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const loadSessions = () => {
     fetchSessions()
@@ -41,6 +43,27 @@ export default function SessionsPage() {
     } finally {
       setDeleting(null);
       setConfirmDelete(null);
+    }
+  };
+
+  const startRename = (s: SessionDetail) => {
+    setEditingId(s.id);
+    setEditTitle(s.title || "");
+  };
+
+  const saveRename = async (sessionId: string) => {
+    const title = editTitle.trim();
+    if (!title || title === sessions.find((s) => s.id === sessionId)?.title) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      await renameSession(sessionId, title);
+      setSessions((prev) => prev.map((s) => s.id === sessionId ? { ...s, title } : s));
+    } catch {
+      alert("重命名失败");
+    } finally {
+      setEditingId(null);
     }
   };
 
@@ -80,13 +103,28 @@ export default function SessionsPage() {
               className="p-4 bg-ink-900/50 border border-ink-800/50 rounded-xl hover:border-ancient-700/30 transition-all group"
             >
               <div className="flex items-center justify-between">
-                <div
-                  className="min-w-0 flex-1 cursor-pointer"
-                  onClick={() => router.push(`/council?id=${s.id}&advisors=${s.advisor_ids.join(",")}&title=${encodeURIComponent(s.title)}&resume=1`)}
-                >
-                  <h3 className="text-sm font-bold text-ink-100 truncate">
-                    {s.title || "议事厅"}
-                  </h3>
+                <div className="min-w-0 flex-1">
+                  {editingId === s.id ? (
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveRename(s.id); if (e.key === "Escape") setEditingId(null); }}
+                      onBlur={() => saveRename(s.id)}
+                      className="w-full bg-ink-800 border border-ancient-600/50 rounded-lg px-2 py-1 text-sm font-bold text-ink-100 focus:outline-none focus:border-ancient-500"
+                      autoFocus
+                      onFocus={(e) => e.target.select()}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <div
+                      className="cursor-pointer group/title"
+                      onClick={() => router.push(`/council?id=${s.id}&advisors=${s.advisor_ids.join(",")}&title=${encodeURIComponent(s.title)}&resume=1`)}
+                    >
+                      <h3 className="text-sm font-bold text-ink-100 truncate group-hover/title:text-ancient-400 transition-colors">
+                        {s.title || "议事厅"}
+                      </h3>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 mt-1 text-xs text-ink-500">
                     <span className="flex items-center gap-1">
                       <MessageSquare size={12} />
@@ -104,6 +142,13 @@ export default function SessionsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); startRename(s); }}
+                    className="p-2 rounded-lg text-ink-600 hover:text-ancient-400 hover:bg-ancient-900/20 opacity-0 group-hover:opacity-100 transition-all"
+                    title="重命名"
+                  >
+                    <Pencil size={14} />
+                  </button>
                   <button
                     onClick={(e) => handleDelete(e, s.id)}
                     disabled={deleting === s.id}

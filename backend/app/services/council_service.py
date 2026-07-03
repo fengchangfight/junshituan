@@ -26,7 +26,6 @@ from app.services.memory.session_store import session_store
 from app.services.memory.user_memory import user_memory_service
 from app.services.memory.context_manager import context_manager
 
-
 class CouncilService:
     """Orchestrates multi-advisor chat sessions."""
 
@@ -165,14 +164,12 @@ class CouncilService:
             return
 
         advisor_ids = session.advisor_ids or []
-        log.debug(f"advisor_ids={advisor_ids}")
         if target_advisor_ids:
             valid = [a for a in target_advisor_ids if a in advisor_ids]
             if not valid:
                 yield AskEvent(advisor_id="system", content="指定的军师不在议事厅中", done=True)
                 return
             advisor_ids = valid
-            log.debug(f"multi-target mode: {len(advisor_ids)} advisors")
         budget = budget_manager.get(session_id)
 
         if budget.over_budget:
@@ -254,7 +251,6 @@ class CouncilService:
 
         async def ask_one(advisor_id: str):
             nonlocal total_response_chars
-            log.debug(f"ask_one START advisor={advisor_id}")
             try:
                 from app.services.persona_engine import get_persona_engine
                 engine = get_persona_engine()
@@ -293,7 +289,6 @@ class CouncilService:
                     ),
                     on_tool_progress=_on_tool_progress,
                 )
-                log.debug(f"ask_one got response from {advisor_id}: len={len(response)} streamed in {(time.perf_counter() - t_stream)*1000:.0f}ms")
 
                 total_response_chars += len(response)
 
