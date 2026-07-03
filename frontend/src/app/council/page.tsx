@@ -389,16 +389,21 @@ function CouncilChat() {
       <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
           <a href="/" className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"><ArrowLeft size={20} className="text-ink-300" /></a>
+          {/* Mobile hamburger for sidebar */}
+          <button onClick={() => setShowSidebar(!showSidebar)} className="md:hidden w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors shrink-0">
+            <Users size={18} className={showSidebar ? "text-ancient-400" : "text-ink-400"} />
+          </button>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-ink-100 truncate">{groupName}</h2>
-            <p className="text-xs text-ink-500">
+            <p className="text-xs text-ink-500 hidden sm:block">
               {replyingId ? `${advisors.find((a) => a.id === replyingId)?.name || "军师"} 正在发言...` : `${advisors.length}位军师在线 — 输入问题开始讨论`}
             </p>
           </div>
-          <button onClick={() => setShowSidebar(!showSidebar)} className="w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors">
+          {/* Desktop sidebar toggle */}
+          <button onClick={() => setShowSidebar(!showSidebar)} className="hidden md:flex w-9 h-9 rounded-lg hover:bg-ink-800/50 items-center justify-center transition-colors">
             {showSidebar ? <PanelRightClose size={18} className="text-ink-400" /> : <PanelRightOpen size={18} className="text-ink-400" />}
           </button>
-          <button onClick={() => setShowToolPanel(!showToolPanel)} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative ${
+          <button onClick={() => setShowToolPanel(!showToolPanel)} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative shrink-0 ${
             toolActivities.some((a) => a.status === "running") ? "bg-blue-900/30 text-blue-400" :
             toolActivities.length > 0 ? "text-ink-300 hover:bg-ink-800/50 hover:text-ink-200" :
             "text-ink-500 hover:bg-ink-800/50 hover:text-ink-400"
@@ -433,13 +438,30 @@ function CouncilChat() {
 
       {/* ── Body ── */}
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Sidebar ── */}
+        {/* ── Sidebar (mobile: overlay with backdrop, desktop: inline column) ── */}
         <AnimatePresence>
           {showSidebar && (
-            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 280, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
-              className="shrink-0 border-r border-ink-800/60 bg-ink-900/30 overflow-y-auto scrollbar-thin">
+            <>
+              {/* Mobile backdrop */}
+              <motion.div
+                key="sidebar-backdrop"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="md:hidden fixed inset-0 z-30 bg-black/60"
+                onClick={() => setShowSidebar(false)}
+              />
+              {/* Sidebar content */}
+              <motion.div
+                key="sidebar-content"
+                initial={{ x: -280, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -280, opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="fixed md:relative left-0 top-0 bottom-0 z-40 md:z-0 w-[280px] shrink-0 border-r border-ink-800/60 bg-ink-900/95 md:bg-ink-900/30 overflow-y-auto scrollbar-thin">
               <div className="p-3">
-                <h3 className="text-xs font-bold text-ink-400 uppercase tracking-wider mb-3 px-1"><Users size={12} className="inline mr-1.5" />议事成员 ({advisors.length})</h3>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="text-xs font-bold text-ink-400 uppercase tracking-wider"><Users size={12} className="inline mr-1.5" />议事成员 ({advisors.length})</h3>
+                  <button onClick={() => setShowSidebar(false)} className="md:hidden text-ink-500 hover:text-ink-300"><X size={16} /></button>
+                </div>
                 <div className="space-y-1.5">
                   {advisors.map((adv, i) => {
                     const isReplying = replyingId === adv.id;
@@ -469,6 +491,7 @@ function CouncilChat() {
                 )}
               </div>
             </motion.div>
+            </>
           )}
         </AnimatePresence>
 
@@ -515,7 +538,8 @@ function CouncilChat() {
           </div>
 
           {/* ── Input ── */}
-          <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-3 py-2.5">
+          <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-t border-ink-800/60 px-2 sm:px-3 py-2.5"
+            style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom, 0px))" }}>
             <div className="flex gap-2 items-end">
               <div className="flex-1 bg-ink-800/80 border border-ink-700/40 rounded-2xl px-4 py-2.5">
                 <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
@@ -544,14 +568,29 @@ function CouncilChat() {
           </div>
         </div>
 
-        {/* ── Tool Activity Panel (right side) ── */}
+        {/* ── Tool Activity Panel (mobile: bottom sheet, desktop: inline column) ── */}
         <AnimatePresence>
           {showToolPanel && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 260, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              className="shrink-0 border-l border-ink-800/60 bg-ink-900/30 overflow-y-auto scrollbar-thin"
+            <>
+              {/* Mobile backdrop */}
+              <motion.div
+                key="tool-backdrop"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="md:hidden fixed inset-0 z-30 bg-black/60"
+                onClick={() => setShowToolPanel(false)}
+              />
+              {/* Panel content */}
+              <motion.div
+                key="tool-content"
+                initial={{ y: "100%", opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0 }}
+                transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                className="fixed md:relative bottom-0 md:bottom-auto left-0 md:left-auto right-0 md:right-auto z-40 md:z-0
+                           max-h-[60vh] md:max-h-none w-full md:w-[260px] shrink-0
+                           border-t md:border-t-0 md:border-l border-ink-800/60
+                           bg-ink-900/95 md:bg-ink-900/30 overflow-y-auto scrollbar-thin
+                           rounded-t-2xl md:rounded-none"
             >
               <div className="p-3">
                 <div className="flex items-center justify-between mb-3">
@@ -614,6 +653,7 @@ function CouncilChat() {
                 )}
               </div>
             </motion.div>
+            </>
           )}
         </AnimatePresence>
       </div>
