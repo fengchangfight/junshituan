@@ -731,8 +731,15 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         if ckpt_tuple:
             log.debug(f"resume() found checkpoint, loading...")
             saved_channels = ckpt_tuple[1].get("channel_values", {})
+            # Merge checkpoint messages with full conversation history.
+            # The checkpoint only has THIS advisor's thread; other advisors'
+            # responses between this advisor's turns would be invisible.
+            saved_msgs = list(saved_channels.get("messages", []))
+            history_msgs = self._build_messages_from_history(history)
+            # Prepend history before checkpoint messages (recency-weighted in _reason)
+            merged_msgs = history_msgs + saved_msgs
             state = {
-                "messages": saved_channels.get("messages", []),
+                "messages": merged_msgs,
                 "persona_id": saved_channels.get("persona_id", self.persona_id),
                 "persona_name": saved_channels.get("persona_name", self.persona_name),
                 "system_prompt": saved_channels.get("system_prompt", self.system_prompt),

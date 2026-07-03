@@ -186,7 +186,7 @@ function CouncilChat() {
               let msgs = prev;
               if (!hasPending && event.advisor_id !== "system") {
                 msgs = [...prev, {
-                  id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                  id: `pending-${event.advisor_id}-${Math.random().toString(36).slice(2, 8)}`, role: "advisor" as const,
                   advisorId: event.advisor_id, advisorName: event.advisor_name || "",
                   content: statusText, timestamp: Date.now(), isStreaming: true,
                 }];
@@ -211,7 +211,7 @@ function CouncilChat() {
             let msgs = prev;
             if (!hasPending && event.advisor_id !== "system") {
               msgs = [...prev, {
-                id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                id: `pending-${event.advisor_id}-${Math.random().toString(36).slice(2, 8)}`, role: "advisor" as const,
                 advisorId: event.advisor_id, advisorName: event.advisor_name || "",
                 content: "", timestamp: Date.now(), isStreaming: true,
               }];
@@ -238,7 +238,7 @@ function CouncilChat() {
             const hasPending = prev.some((m) => m.advisorId === event.advisor_id && m.isStreaming);
             if (!hasPending) {
               return [...prev, {
-                id: `pending-${event.advisor_id}`, role: "advisor" as const,
+                id: `pending-${event.advisor_id}-${Math.random().toString(36).slice(2, 8)}`, role: "advisor" as const,
                 advisorId: event.advisor_id, advisorName: event.advisor_name || "",
                 content: "", timestamp: Date.now(), isStreaming: true,
               }];
@@ -265,7 +265,7 @@ function CouncilChat() {
     setReplyingId(advisor.id);
 
     const pendingMsg: Message = {
-      id: `pending-${advisor.id}`, role: "advisor",
+      id: `pending-${advisor.id}-${Math.random().toString(36).slice(2, 8)}`, role: "advisor",
       advisorId: advisor.id, advisorName: advisor.name,
       content: "（正在根据之前的讨论接话...）", timestamp: Date.now(), isStreaming: true,
     };
