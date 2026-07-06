@@ -31,6 +31,7 @@ export default function HomePage() {
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeCategory, setActiveCategory] = useState<string>("全部");
+  const [visibilityTab, setVisibilityTab] = useState<"全部" | "公共" | "我的">("全部");
   const [loading, setLoading] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
@@ -98,9 +99,15 @@ export default function HomePage() {
   };
 
   const categories = ["全部", ...Array.from(new Set(advisors.map((a) => a.category)))];
-  const filtered = activeCategory === "全部"
+  const visibilityFiltered = visibilityTab === "全部"
     ? advisors
-    : advisors.filter((a) => a.category === activeCategory);
+    : visibilityTab === "公共"
+    ? advisors.filter((a) => a.visibility === "public")
+    : advisors.filter((a) => a.visibility === "private");
+
+  const filtered = activeCategory === "全部"
+    ? visibilityFiltered
+    : visibilityFiltered.filter((a) => a.category === activeCategory);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -169,6 +176,25 @@ export default function HomePage() {
           </div>
         ))}
       </div>
+
+      {/* ── Visibility tabs ───────────────────────────────────────── */}
+      {isLoggedIn && (
+        <div className="flex justify-center gap-1.5 sm:gap-2 mb-3">
+          {(["全部", "公共", "我的"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setVisibilityTab(tab)}
+              className={`px-4 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all border ${
+                visibilityTab === tab
+                  ? "bg-ancient-600/30 border-ancient-500/50 text-ancient-300"
+                  : "bg-ink-900/30 border-ink-800/30 text-ink-500 hover:text-ink-300 hover:border-ink-700/50"
+              }`}
+            >
+              {tab === "全部" ? "全部军师" : tab === "公共" ? "🌐 公共军师" : "🔒 我的军师"}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Category filters ──────────────────────────────────────── */}
       <div className="flex justify-center gap-1.5 sm:gap-2 mb-6 flex-wrap">

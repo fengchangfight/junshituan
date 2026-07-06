@@ -96,6 +96,9 @@ export default function AdvisorCard({
 
       <h3 className="text-center text-sm sm:text-lg font-bold text-ink-100 mb-0.5 sm:mb-1 font-display">
         {advisor.name}
+        {advisor.visibility === "private" && (
+          <span className="ml-1.5 text-[10px] align-middle px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400 font-normal">私人</span>
+        )}
       </h3>
       <p className="text-center text-[10px] sm:text-xs text-ancient-400 mb-1 sm:mb-2">
         {advisor.era} · {advisor.title}
