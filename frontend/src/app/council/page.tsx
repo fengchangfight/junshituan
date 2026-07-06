@@ -395,10 +395,6 @@ function CouncilChat() {
       <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
           <a href="/" className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"><ArrowLeft size={20} className="text-ink-300" /></a>
-          {/* Mobile hamburger for sidebar */}
-          <button onClick={() => setShowSidebar(!showSidebar)} className="md:hidden w-9 h-9 rounded-lg hover:bg-ink-800/50 flex items-center justify-center transition-colors shrink-0">
-            <Users size={18} className={showSidebar ? "text-ancient-400" : "text-ink-400"} />
-          </button>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-ink-100 truncate">{groupName}</h2>
             <p className="text-xs text-ink-500 hidden sm:block">
@@ -424,6 +420,49 @@ function CouncilChat() {
               <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-400 rounded-full animate-pulse" />
             )}
           </button>
+        </div>
+      </div>
+
+      {/* ── Mobile advisor strip ── */}
+      <div className="md:hidden shrink-0 bg-ink-900/80 border-b border-ink-800/50 px-2 py-1.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+          <button
+            onClick={() => setShowSidebar(true)}
+            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-ink-800/80 border border-ink-700/50 text-ink-400 text-xs hover:text-ink-200 transition-colors"
+          >
+            <Users size={14} />
+            <span>{advisors.length}人</span>
+          </button>
+          {advisors.map((adv, i) => {
+            const isReplying = replyingId === adv.id;
+            const isDeleted = adv.name === "已删除";
+            return (
+              <button
+                key={adv.id}
+                disabled={isDeleted}
+                onClick={() => {
+                  if (isDeleted) return;
+                  setInput((prev) => prev.includes(`@${adv.name}`) ? prev : `${prev}@${adv.name} `);
+                  inputRef.current?.focus();
+                }}
+                className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-full text-xs transition-all border ${
+                  isReplying
+                    ? "bg-amber-900/30 border-amber-600/50"
+                    : isDeleted
+                    ? "opacity-40 border-ink-800"
+                    : "bg-ink-800/50 border-ink-700/50 hover:border-ink-500 text-ink-300"
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
+                  isDeleted ? "bg-ink-700" : `bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`
+                }`}>
+                  {adv.name[0]}
+                </div>
+                <span className={isDeleted ? "text-ink-600 line-through" : ""}>{adv.name}</span>
+                {isReplying && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              </button>
+            );
+          })}
         </div>
       </div>
 
