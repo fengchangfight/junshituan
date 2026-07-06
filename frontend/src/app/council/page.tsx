@@ -71,6 +71,7 @@ function CouncilChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showToolPanel, setShowToolPanel] = useState(true);
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetInfo | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -79,10 +80,15 @@ function CouncilChat() {
   const [inviting, setInviting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [toolActivities, setToolActivities] = useState<Array<{id: string; advisorId: string; advisorName: string; toolName: string; query: string; status: "running"|"done"; ts: number; results?: Array<{title: string; href: string; snippet: string}>}>>([]);
-  const [showToolPanel, setShowToolPanel] = useState(true);
   const [useWebSearch, setUseWebSearch] = useState(true);
 
   useEffect(() => {
+    // Mobile: start with sidebar/tool-panel hidden so chat is front and center
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setShowSidebar(false);
+      setShowToolPanel(false);
+    }
+
     async function init() {
       const list = await fetchAdvisors().catch(() => []);
       setAllAdvisors(list);
