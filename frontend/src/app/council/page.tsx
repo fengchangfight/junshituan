@@ -453,11 +453,15 @@ function CouncilChat() {
                     : "bg-ink-800/50 border-ink-700/50 hover:border-ink-500 text-ink-300"
                 }`}
               >
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
-                  isDeleted ? "bg-ink-700" : `bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`
-                }`}>
-                  {adv.name[0]}
-                </div>
+                {adv.avatar ? (
+                  <img src={adv.avatar} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
+                    isDeleted ? "bg-ink-700" : `bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`
+                  }`}>
+                    {adv.name[0]}
+                  </div>
+                )}
                 <span className={isDeleted ? "text-ink-600 line-through" : ""}>{adv.name}</span>
                 {isReplying && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
               </button>
