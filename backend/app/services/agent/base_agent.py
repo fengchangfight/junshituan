@@ -487,7 +487,6 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         response = self._strip_tags(response)
 
         if response and tools and rounds < MAX_TOOL_ROUNDS and token_cb:
-            import asyncio
             for i in range(0, len(response), 2):
                 await token_cb(response[i:i+2])
                 await asyncio.sleep(0.015)
