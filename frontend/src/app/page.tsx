@@ -71,8 +71,9 @@ export default function HomePage() {
         body: JSON.stringify({ name: smartName.trim() }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "创建失败"); }
+      const data = await res.json();
       setShowCreateModal(false); setSmartName("");
-      fetchAdvisors().then(setAdvisors);
+      router.push(`/admin/advisors/${data.id}`);
     } catch (e: any) { setCreateError(e.message); }
     finally { setCreating(false); }
   };
@@ -88,9 +89,10 @@ export default function HomePage() {
         body: JSON.stringify(createForm),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "创建失败"); }
+      const data = await res.json();
       setShowCreateModal(false);
       setCreateForm({ name: "", title: "", category: "其他", era: "", avatar: "", short_bio: "", style: "" });
-      fetchAdvisors().then(setAdvisors);
+      router.push(`/admin/advisors/${data.id}`);
     } catch (e: any) { setCreateError(e.message); }
     finally { setCreating(false); }
   };
