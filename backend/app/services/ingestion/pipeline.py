@@ -1,7 +1,7 @@
 """Knowledge ingestion pipeline — powered by llama-index IngestionPipeline.
 
 - Chunking: SentenceSplitter
-- Embedding: via EmbeddingProvider (HuggingFace / OpenAI)
+- Embedding: via EmbeddingProvider (ZhipuAI embedding-2)
 - Dedup: DocstoreStrategy.UPSERTS_AND_DELETE (skip unchanged docs, delete old nodes on change)
 - BM25: pre-fitted on full corpus before pipeline runs
 """

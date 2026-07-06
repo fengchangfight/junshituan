@@ -440,15 +440,28 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 
             parser = StreamTagParser(["complexity", "reasoning", "response"])
             raw = ""
-            async for token in chat_stream(
-                system_prompt="",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.85,
-            ):
-                raw += token
-                forward = parser.feed(token)
-                if forward and token_cb:
-                    await token_cb(forward)
+
+            async def _drain():
+                nonlocal raw
+                stream = chat_stream(
+                    system_prompt="",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.85,
+                )
+                async for token in stream:
+                    raw += token
+                    forward = parser.feed(token)
+                    if forward and token_cb:
+                        await token_cb(forward)
+                return raw
+
+            try:
+                await asyncio.wait_for(_drain(), timeout=45.0)
+            except asyncio.TimeoutError:
+                if not raw:
+                    raw = f"<complexity>simple</complexity><response>恕我直言，此事三言两语难以道尽。容我改日再谈。</response>"
+                    if token_cb:
+                        await token_cb("（思考超时）")
 
         # ── Parse response ───────────────────────────────────────────────────
         complexity = "simple"
@@ -523,14 +536,22 @@ complexity=complex：需要多步推理、对比分析、数学计算。
 3. 重点回应最近讨论的观点"""
 
         full = ""
-        async for token in chat_stream(
-            system_prompt="",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.85,
-        ):
-            full += token
-            if token_cb:
-                await token_cb(token)
+        try:
+            async def _drain_respond():
+                nonlocal full
+                stream = chat_stream(
+                    system_prompt="",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.85,
+                )
+                async for token in stream:
+                    full += token
+                    if token_cb:
+                        await token_cb(token)
+            await asyncio.wait_for(_drain_respond(), timeout=45.0)
+        except asyncio.TimeoutError:
+            if not full:
+                full = "恕我直言，此事三言两语难以道尽。容我改日再谈。"
 
         log.timing(f"_respond took {(time.perf_counter() - t0)*1000:.0f}ms response={len(full)}chars")
         return {"final_response": full}

@@ -16,7 +16,7 @@ IngestionPipeline.ingest_text()
   │     智能断句：优先在段落/句号处断开
   │
   ├─ 2. 双路编码 (dual encoding)
-  │     ├─ Dense: BGE-small-zh-v1.5 → 512维向量
+  │     ├─ Dense: ZhipuAI embedding-2 → 1024维向量
   │     └─ Sparse: BM25 → 稀疏向量
   │
   ├─ 3. Milvus 写入
@@ -36,7 +36,7 @@ IngestionPipeline.ingest_text()
 ```
 用户提问 "出师表中如何论述亲贤臣远小人？"
   │
-  ├─ Dense 搜索 (BGE, 60%权重)
+  ├─ Dense 搜索 (ZhipuAI embedding-2, 60%权重)
   │     语义理解：检索意思相近的段落
   │     → "亲贤臣，远小人，此先汉所以兴隆也"
   │
@@ -111,10 +111,10 @@ Content-Type: application/json
 
 ## 嵌入后端
 
-| 配置 | 模型 | 维度 | 费用 |
+| 嵌入后端 | 模型 | 维度 | 费用 |
 |------|------|------|------|
-| `LOCAL_EMBEDDING=true` (默认) | BAAI/bge-small-zh-v1.5 | 512 | 免费 |
-| `LOCAL_EMBEDDING=false` | OpenAI text-embedding-3-small | 1536 | ¥0.14/M token |
+| ZhipuAI | embedding-2 | 1024 | ¥0.5/M token |
+| OpenAI | text-embedding-3-small | 1536 | ¥0.14/M token |
 
 切换嵌入后端需重新消化所有知识库。
 

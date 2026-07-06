@@ -59,8 +59,9 @@ docker compose up -d postgres milvus etcd minio
 | `OPENAI_API_KEY` | 空 | DeepSeek/OpenAI API Key |
 | `OPENAI_BASE_URL` | `https://api.deepseek.com/v1` | LLM API 地址 |
 | `LLM_MODEL` | `deepseek-v4-pro` | 模型名称 |
-| `EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | 嵌入 API 地址 |
-| `EMBEDDING_API_KEY` | 空 | 嵌入 API Key |
+| `EMBEDDING_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | 嵌入 API 地址 |
+| `EMBEDDING_API_KEY` | 空 | 嵌入 API Key（ZhipuAI） |
+| `EMBEDDING_MODEL` | `embedding-2` | 嵌入模型名称 |
 | `MAX_BUDGET_PER_SESSION_CNY` | `15.0` | 每会话预算上限 |
 | `JWT_SECRET` | — | JWT 签名密钥 |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 前端 API 地址 |

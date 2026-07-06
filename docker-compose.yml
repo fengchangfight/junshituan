@@ -118,9 +118,10 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.deepseek.com/v1}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
-      # Embedding (local BGE, pre-downloaded in Dockerfile)
-      LOCAL_EMBEDDING: "true"
-      LOCAL_EMBEDDING_MODEL: BAAI/bge-small-zh-v1.5
+      # Embedding (ZhipuAI embedding-2)
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      # EMBEDDING_MODEL: embedding-2
+      # EMBEDDING_BASE_URL: https://open.bigmodel.cn/api/paas/v4
       # Auth
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       CORS_ORIGINS: '["http://localhost:3000"]'

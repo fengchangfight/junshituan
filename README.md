@@ -52,7 +52,7 @@
 | 后端 | FastAPI · LangGraph · llama-index · SQLAlchemy async |
 | 向量库 | Milvus 2.4 (Dense + Sparse hybrid) |
 | 数据库 | PostgreSQL 16 |
-| 嵌入 | BGE-small-zh-v1.5 (本地, free) / OpenAI text-embedding-3-small |
+| 嵌入 | ZhipuAI embedding-2 / OpenAI text-embedding-3-small |
 | LLM | DeepSeek V4 / 兼容 OpenAI 接口 |
 
 ---
@@ -135,7 +135,8 @@ iwr -Uri http://localhost:8000/api/auth/admin/create -Method Post `
 | `OPENAI_API_KEY` | LLM API 密钥 | — |
 | `OPENAI_BASE_URL` | LLM API 地址 | `https://api.deepseek.com/v1` |
 | `LLM_MODEL` | 模型名称 | `deepseek-v4-pro` |
-| `LOCAL_EMBEDDING` | 使用本地嵌入模型 | `true` |
+| `EMBEDDING_API_KEY` | 嵌入 API 密钥 | — |
+| `EMBEDDING_MODEL` | 嵌入模型名称 | `embedding-2` |
 | `DATABASE_URL` | PostgreSQL 连接串 | `postgresql+asyncpg://...` |
 | `JWT_SECRET` | JWT 签名密钥 | 修改默认值 |
 

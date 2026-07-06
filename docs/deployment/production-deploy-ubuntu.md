@@ -88,9 +88,10 @@ OPENAI_API_KEY=sk-your-deepseek-key
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-v4-pro
 
-# Embedding（本地模型，不需 API key）
-LOCAL_EMBEDDING=true
-LOCAL_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+# Embedding（ZhipuAI embedding-2，云端 API）
+EMBEDDING_API_KEY=your-zhipu-api-key
+# EMBEDDING_MODEL=embedding-2
+# EMBEDDING_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 
 # JWT（必改）
 JWT_SECRET=随机生成一个64位字符串

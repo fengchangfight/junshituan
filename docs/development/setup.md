@@ -53,10 +53,10 @@ DATABASE_URL=postgresql+asyncpg://junshituan:junshituan_secret@localhost:5432/ju
 MILVUS_HOST=localhost
 MILVUS_PORT=19530
 
-# ── Embedding (本地 BGE，免费，CPU) ──────────────────
-LOCAL_EMBEDDING=true
-LOCAL_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
-# 首次启动自动下载 ~400MB 模型
+# ── Embedding (ZhipuAI embedding-2) ──────────────────
+EMBEDDING_API_KEY=your-zhipu-api-key
+# EMBEDDING_MODEL=embedding-2
+# EMBEDDING_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 
 # ── 预算 ────────────────────────────────────────────
 MAX_BUDGET_PER_SESSION_CNY=15.0
@@ -68,14 +68,13 @@ CORS_ORIGINS=["http://localhost:3000"]
 
 ### 切换到外部嵌入 API（备用）
 
-若需更换嵌入方案：
+若需更换嵌入方案（如切换为 OpenAI）：
 
 ```env
-LOCAL_EMBEDDING=false
+EMBEDDING_API_KEY=sk-your-openai-key
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIM=1536
 EMBEDDING_BASE_URL=https://api.openai.com/v1
-EMBEDDING_API_KEY=sk-your-openai-key
 ```
 
 代码无需改动，切换后需重新消化知识库。
@@ -139,7 +138,7 @@ backend/
 │   ├── core/                   # 核心模块
 │   │   ├── config.py           # 全局配置 (Pydantic Settings)
 │   │   ├── llm_client.py       # LLM 客户端封装
-│   │   ├── embedding.py        # 嵌入服务 (本地BGE / API切换)
+│   │   ├── embedding.py        # 嵌入服务 (ZhipuAI embedding-2)
 │   │   └── security.py         # JWT 认证中间件
 │   ├── db/
 │   │   └── database.py         # SQLAlchemy 异步引擎
@@ -212,7 +211,7 @@ docker compose logs milvus  # 查看日志
 确认 `.env` 中 `DATABASE_URL` 的 host 是 `localhost`（本地开发），不是 `postgres`（Docker 内部）。
 
 ### Q: 嵌入模型首次启动慢？
-`LOCAL_EMBEDDING=true` 时首次启动下载 BGE 模型 (~400MB)。后续秒开。
+ZhipuAI embedding-2 为云端 API，无需本地下载模型，即时可用。
 
 ### Q: 如何清空数据库重来？
 ```bash
