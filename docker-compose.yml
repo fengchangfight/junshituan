@@ -9,7 +9,7 @@ services:
     environment:
       POSTGRES_DB: junshituan
       POSTGRES_USER: junshituan
-      POSTGRES_PASSWORD: junshituan_secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-junshituan_secret}
     ports:
       - "5432:5432"
     volumes:
@@ -111,7 +111,7 @@ services:
         condition: service_healthy
     environment:
       # Database & Milvus
-      DATABASE_URL: postgresql+asyncpg://junshituan:junshituan_secret@postgres:5432/junshituan
+      DATABASE_URL: postgresql+asyncpg://junshituan:${POSTGRES_PASSWORD:-junshituan_secret}@postgres:5432/junshituan
       MILVUS_HOST: milvus
       MILVUS_PORT: "19530"
       # LLM
