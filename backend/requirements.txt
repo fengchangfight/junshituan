@@ -33,9 +33,6 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.0
 
-# Local embeddings (dev)
-sentence-transformers>=3.0.0
-
 # Tools
 ddgs>=7.0.0
 
