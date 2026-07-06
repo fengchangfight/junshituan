@@ -1,0 +1,15 @@
+venv
+Lib
+Scripts
+Include
+share
+pyvenv.cfg
+__pycache__
+*.pyc
+.git
+.gitignore
+.env
+data
+docstore
+personas
+uploads
