@@ -3,7 +3,7 @@ import "@/styles/globals.css";
 import NavBar from "@/components/NavBar";
 
 export const metadata: Metadata = {
-  title: "军师团 - 虚拟历史顾问团",
+  title: "军师团 - 虚拟精英顾问团",
   description: "与历史智者对话，汲取千年智慧",
   icons: {
     icon: "/favicon.svg",
