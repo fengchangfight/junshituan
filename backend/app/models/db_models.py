@@ -185,3 +185,16 @@ class AgentCheckpoint(Base):
     checkpoint_ns = Column(String(256), default="")
     checkpoint_data = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class VerificationCode(Base):
+    """SMS verification codes for phone login."""
+
+    __tablename__ = "verification_codes"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    phone = Column(String(20), nullable=False, index=True)
+    code = Column(String(6), nullable=False)
+    used = Column(Boolean, default=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)

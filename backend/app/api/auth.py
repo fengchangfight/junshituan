@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.database import get_db
 from app.models.db_models import User
 from app.models.schemas import (
@@ -148,3 +150,116 @@ async def update_user_role(
     target.role = req.role
     await db.commit()
     return {"status": "ok", "user_id": user_id, "role": req.role}
+
+
+# ── Phone SMS Login ────────────────────────────────────────────────────────
+
+class SendCodeRequest(BaseModel):
+    phone: str = Field(min_length=11, max_length=11)
+
+
+class LoginPhoneRequest(BaseModel):
+    phone: str = Field(min_length=11, max_length=11)
+    code: str = Field(min_length=4, max_length=6)
+
+
+@router.post("/send-code")
+async def send_code(req: SendCodeRequest, db: AsyncSession = Depends(get_db)):
+    """Send SMS verification code. Rate-limited: 1 per 60s per phone."""
+    import random
+    from datetime import datetime, timedelta, timezone
+    from app.models.db_models import VerificationCode
+
+    phone = req.phone.strip()
+    if not phone.isdigit() or len(phone) != 11:
+        raise HTTPException(status_code=400, detail="手机号格式不正确")
+
+    # Rate limit: check last code sent within 60s
+    recent = await db.execute(
+        select(VerificationCode).where(
+            VerificationCode.phone == phone,
+            VerificationCode.created_at > datetime.now(timezone.utc) - timedelta(seconds=60),
+        )
+    )
+    if recent.scalar_one_or_none():
+        raise HTTPException(status_code=429, detail="请60秒后再试")
+
+    code = f"{random.randint(100000, 999999)}"
+    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    db.add(VerificationCode(phone=phone, code=code, expires_at=expires))
+    await db.commit()
+
+    # Send SMS via Alibaba Cloud 号码认证 (dypnsapi)
+    try:
+        if settings.alibabacloud_access_key_id:
+            import json as _json
+            from alibabacloud_dypnsapi20170525.client import Client
+            from alibabacloud_dypnsapi20170525 import models
+            from alibabacloud_tea_openapi import models as open_api_models
+
+            cfg = open_api_models.Config(
+                access_key_id=settings.alibabacloud_access_key_id,
+                access_key_secret=settings.alibabacloud_access_key_secret,
+            )
+            cfg.endpoint = "dypnsapi.aliyuncs.com"
+            client = Client(cfg)
+
+            req = models.SendSmsVerifyCodeRequest(
+                phone_number=phone,
+                sign_name=settings.sms_sign_name,
+                template_code=settings.sms_template_code,
+                template_param=_json.dumps({"code": code, "min": "5"}),
+            )
+            client.send_sms_verify_code(req)
+    except Exception as e:
+        print(f"[SMS] send failed: {e}", flush=True)
+        if settings.alibabacloud_access_key_id:
+            raise HTTPException(status_code=500, detail="短信发送失败，请稍后重试")
+
+    return {"status": "ok", "message": "验证码已发送"}
+
+
+@router.post("/login-phone", response_model=TokenOut)
+async def login_phone(req: LoginPhoneRequest, db: AsyncSession = Depends(get_db)):
+    """Login or register via phone + SMS code. Auto-creates account if new."""
+    from datetime import datetime, timezone
+    from app.models.db_models import VerificationCode
+
+    phone = req.phone.strip()
+    code = req.code.strip()
+
+    # Verify code
+    vc_result = await db.execute(
+        select(VerificationCode).where(
+            VerificationCode.phone == phone,
+            VerificationCode.code == code,
+            VerificationCode.used == False,
+            VerificationCode.expires_at > datetime.now(timezone.utc),
+        )
+    )
+    vc = vc_result.scalar_one_or_none()
+    if not vc:
+        raise HTTPException(status_code=400, detail="验证码错误或已过期")
+
+    # Mark as used
+    vc.used = True
+    await db.commit()
+
+    # Find or create user
+    result = await db.execute(select(User).where(User.username == phone))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        user = User(
+            username=phone,
+            display_name=f"用户{phone[-4:]}",
+            hashed_password=hash_password(phone),  # placeholder
+            role=ROLE_USER,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    token = _make_token(user)
+    return _token_response(user, token)

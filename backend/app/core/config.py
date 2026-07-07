@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 1440
     admin_users: list[str] = ["admin"]
 
+    # ── SMS (Alibaba Cloud 号码认证 dypnsapi) ─────────────
+    alibabacloud_access_key_id: str = ""
+    alibabacloud_access_key_secret: str = ""
+    sms_sign_name: str = "军师团"
+    sms_template_code: str = "SMS_100001"
+
     # ── CORS ────────────────────────────────────────────────────────────
     cors_origins: list[str] = ["http://localhost:3000"]
 

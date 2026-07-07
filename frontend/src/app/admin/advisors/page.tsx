@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle, AlertCircle, Loader2, Circle, Plus, X, Sparkles, Zap } from "lucide-react";
@@ -24,6 +25,7 @@ interface Advisor {
 const CATEGORIES = ["军事家", "哲学家", "政治家", "文学家", "科学家", "企业家", "其他"];
 
 export default function AdminAdvisorsPage() {
+  const router = useRouter();
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -90,10 +92,10 @@ export default function AdminAdvisorsPage() {
         const err = await res.json();
         throw new Error(err.detail || "创建失败");
       }
+      const data = await res.json();
       setShowCreate(false);
       setForm({ name: "", title: "", category: "其他", era: "", avatar: "", short_bio: "", style: "" });
-      setLoading(true);
-      fetchAdvisors();
+      router.push(`/admin/advisors/${data.id}`);
     } catch (e: any) {
       setCreateError(e.message);
     } finally {
@@ -122,10 +124,10 @@ export default function AdminAdvisorsPage() {
         const err = await res.json();
         throw new Error(err.detail || "创建失败");
       }
+      const data = await res.json();
       setShowSmartCreate(false);
       setSmartName("");
-      setLoading(true);
-      fetchAdvisors();
+      router.push(`/admin/advisors/${data.id}`);
     } catch (e: any) {
       setSmartError(e.message);
     } finally {

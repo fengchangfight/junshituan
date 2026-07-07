@@ -54,6 +54,33 @@ export async function login(username: string, password: string) {
   return data;
 }
 
+export async function sendCode(phone: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/send-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "发送失败");
+  }
+}
+
+export async function loginPhone(phone: string, code: string) {
+  const res = await fetch(`${API_BASE}/api/auth/login-phone`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, code }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "验证失败");
+  }
+  const data = await res.json();
+  setToken(data.access_token);
+  return data;
+}
+
 export async function register(username: string, password: string, displayName?: string) {
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
