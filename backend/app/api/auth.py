@@ -129,6 +129,29 @@ async def update_profile(
     return {"status": "ok", "avatar_url": user.avatar_url, "display_name": user.display_name}
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = ""
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+@router.post("/change-password")
+async def change_password(
+    req: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Change password. If user has no password (phone register), skip current_password check."""
+    if user.hashed_password:
+        if not req.current_password:
+            raise HTTPException(status_code=400, detail="请输入原密码")
+        if not verify_password(req.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="原密码错误")
+
+    user.hashed_password = hash_password(req.new_password)
+    await db.commit()
+    return {"status": "ok", "message": "密码已更新"}
+
+
 @router.put("/users/{user_id}/role")
 async def update_user_role(
     user_id: str,
@@ -268,7 +291,7 @@ async def login_phone(req: LoginPhoneRequest, db: AsyncSession = Depends(get_db)
         user = User(
             username=phone,
             display_name=f"用户{phone[-4:]}",
-            hashed_password=hash_password(phone),  # placeholder
+            hashed_password="",  # SMS-only user, set password later
             role=ROLE_USER,
         )
         db.add(user)

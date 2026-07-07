@@ -81,6 +81,18 @@ export async function loginPhone(phone: string, code: string) {
   return data;
 }
 
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "修改失败");
+  }
+}
+
 export async function register(username: string, password: string, displayName?: string) {
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",

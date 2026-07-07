@@ -4,15 +4,25 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getToken, removeToken, getUserInfo } from "@/lib/api";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
 export default function NavBar() {
   const [username, setUsername] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [avatar, setAvatar] = useState("");
 
   useEffect(() => {
     const info = getUserInfo();
     if (info) {
       setUsername(info.username);
       setIsAdmin(info.isAdmin);
+      const t = getToken();
+      if (t) {
+        fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${t}` } })
+          .then((r) => r.json())
+          .then((d) => { if (d.avatar_url) setAvatar(d.avatar_url); })
+          .catch(() => {});
+      }
     }
   }, []);
 
@@ -43,7 +53,16 @@ export default function NavBar() {
               <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
                 管理军师
               </Link>
-              <span className="text-ink-500">{username}</span>
+              <Link href="/profile" className="flex items-center gap-1.5 text-ink-400 hover:text-ink-200 transition-colors">
+                {avatar ? (
+                  <img src={avatar} className="w-5 h-5 rounded-full object-cover border border-ink-700" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-ancient-600 to-ancient-800 flex items-center justify-center text-white text-[10px] font-bold">
+                    {username[0]?.toUpperCase() || "?"}
+                  </div>
+                )}
+                <span className="hidden sm:inline">{username}</span>
+              </Link>
               <button
                 onClick={handleLogout}
                 className="hover:text-red-400 transition-colors"
