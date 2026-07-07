@@ -103,12 +103,16 @@ async def create_admin(req: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=UserOut)
 async def get_profile(user: User = Depends(require_user)):
+    has_real_pw = bool(user.hashed_password) and not verify_password(
+        user.username, user.hashed_password
+    )
     return UserOut(
         id=user.id,
         username=user.username,
         display_name=user.display_name or "",
         avatar_url=user.avatar_url or "",
         role=user.role,
+        has_password=has_real_pw,
         created_at=user.created_at.isoformat() if user.created_at else "",
     )
 
@@ -140,8 +144,11 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    """Change password. If user has no password (phone register), skip current_password check."""
-    if user.hashed_password:
+    """Change password. Phone users (no password or placeholder) skip old-password check."""
+    has_real_password = bool(user.hashed_password) and not verify_password(
+        user.username, user.hashed_password
+    )
+    if has_real_password:
         if not req.current_password:
             raise HTTPException(status_code=400, detail="请输入原密码")
         if not verify_password(req.current_password, user.hashed_password):

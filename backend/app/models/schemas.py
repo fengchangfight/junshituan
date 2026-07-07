@@ -187,6 +187,7 @@ class UserOut(BaseModel):
     display_name: str
     avatar_url: str = ""
     role: str = "user"
+    has_password: bool = True
     created_at: str
 
 

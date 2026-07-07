@@ -19,6 +19,7 @@ export default function ProfilePage() {
   const [avatar, setAvatar] = useState("");
   const [username, setUsername] = useState("");
   const [role, setRole] = useState("");
+  const [hasPassword, setHasPassword] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [curPwd, setCurPwd] = useState("");
@@ -34,6 +35,7 @@ export default function ProfilePage() {
         setAvatar(d.avatar_url || "");
         setUsername(d.username || "");
         setRole(d.role || "");
+        setHasPassword(d.has_password !== false);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -151,10 +153,11 @@ export default function ProfilePage() {
       <h3 className="text-sm font-bold text-ink-300 mb-3">修改密码</h3>
       <div className="space-y-3 p-4 rounded-xl bg-ink-900/40 border border-ink-800/40">
         <div>
-          <label className="text-xs text-ink-400 mb-1 block">原密码（未设过则留空）</label>
+          <label className="text-xs text-ink-400 mb-1 block">原密码</label>
           <input type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)}
-            placeholder="未设过密码则留空"
-            className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600" />
+            placeholder={hasPassword ? "输入原密码" : "未设置密码"}
+            disabled={!hasPassword}
+            className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600 disabled:opacity-40 disabled:cursor-not-allowed" />
         </div>
         <div>
           <label className="text-xs text-ink-400 mb-1 block">新密码（至少6位）</label>
