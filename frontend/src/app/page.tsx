@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Advisor } from "@/lib/types";
 import { fetchAdvisors, createCouncil, getToken, getUserInfo } from "@/lib/api";
 import AdvisorCard from "@/components/AdvisorCard/AdvisorCard";
-import { Plus, Sparkles, Zap, Loader2, X } from "lucide-react";
+import { Plus, Sparkles, Zap, Loader2, X, Shuffle } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -142,6 +142,24 @@ export default function HomePage() {
     }
   };
 
+  const handleQuickStart = async () => {
+    if (!getToken()) { router.push("/login"); return; }
+    const pool = advisors.filter((a) => a.visibility !== "private" || a.creator_id);
+    if (pool.length === 0) return;
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, Math.min(12, shuffled.length));
+    const ids = picked.map((a) => a.id);
+    const title = picked.map((a) => a.name).join("、") + "的议事厅";
+    setLoading(true);
+    try {
+      const council = await createCouncil(ids, title);
+      router.push(`/council?id=${council.id}&advisors=${ids.join(",")}&title=${encodeURIComponent(title)}`);
+    } catch {
+      setLoading(false);
+      router.push("/login");
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-10 pb-28">
       {/* ── Header: clear CTA ─────────────────────────────────────── */}
@@ -156,6 +174,15 @@ export default function HomePage() {
         <p className="text-sm text-ink-400 max-w-lg mx-auto">
           召集 1-12 位历史智者组成专属顾问团，向他们请教任何问题
         </p>
+        {/* Quick start */}
+        <button
+          onClick={handleQuickStart}
+          disabled={loading || advisors.length === 0}
+          className="mt-4 px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-purple-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 mx-auto"
+        >
+          <Shuffle size={16} />
+          {advisors.length === 0 ? "加载中..." : "一键随机组局"}
+        </button>
       </motion.div>
 
       {/* ── Steps indicator ───────────────────────────────────────── */}
