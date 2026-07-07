@@ -191,8 +191,10 @@ async def send_code(req: SendCodeRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     # Send SMS via Alibaba Cloud 号码认证 (dypnsapi)
-    try:
-        if settings.alibabacloud_access_key_id:
+    sms_sent = False
+    sms_error = None
+    if settings.alibabacloud_access_key_id:
+        try:
             import json as _json
             from alibabacloud_dypnsapi20170525.client import Client
             from alibabacloud_dypnsapi20170525 import models
@@ -211,11 +213,23 @@ async def send_code(req: SendCodeRequest, db: AsyncSession = Depends(get_db)):
                 template_code=settings.sms_template_code,
                 template_param=_json.dumps({"code": code, "min": "5"}),
             )
-            client.send_sms_verify_code(req)
-    except Exception as e:
-        print(f"[SMS] send failed: {e}", flush=True)
-        if settings.alibabacloud_access_key_id:
-            raise HTTPException(status_code=500, detail="短信发送失败，请稍后重试")
+            resp = client.send_sms_verify_code(req)
+            sms_sent = resp.body.code == "OK"
+            print(f"[SMS] sent to {phone}: code={resp.body.code} message={resp.body.message}", flush=True)
+        except Exception as e:
+            sms_error = str(e)
+            print(f"[SMS] FAILED to {phone}: {type(e).__name__}: {e}", flush=True)
+            secret_preview = settings.alibabacloud_access_key_secret[:4] + "***" if settings.alibabacloud_access_key_secret else "MISSING"
+            print(f"[SMS] config: key_id={'SET' if settings.alibabacloud_access_key_id else 'MISSING'} "
+                  f"secret={secret_preview} sign={settings.sms_sign_name} tpl={settings.sms_template_code}", flush=True)
+    else:
+        print(f"[SMS] SKIPPED (no access key configured) code={code} phone={phone}", flush=True)
+
+    if not sms_sent and settings.alibabacloud_access_key_id:
+        raise HTTPException(
+            status_code=500,
+            detail=f"短信发送失败：{sms_error or '未知错误'}",
+        )
 
     return {"status": "ok", "message": "验证码已发送"}
 
