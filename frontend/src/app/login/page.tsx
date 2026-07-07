@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { login, register, sendCode, loginPhone } from "@/lib/api";
+import { login, sendCode, loginPhone } from "@/lib/api";
 import { ArrowRight, Loader2, User, Smartphone } from "lucide-react";
 
 type Mode = "phone" | "password";
@@ -60,17 +60,6 @@ export default function LoginPage() {
     setError(""); setLoading(true);
     try {
       await login(u, password);
-      router.push("/");
-      window.location.href = "/";
-    } catch (e: any) {
-      setError(e.message);
-    } finally { setLoading(false); }
-  };
-
-  const quickDemoLogin = async (demoUser: string) => {
-    setError(""); setLoading(true);
-    try {
-      await login(demoUser, "demo123");
       router.push("/");
       window.location.href = "/";
     } catch (e: any) {
@@ -184,22 +173,6 @@ export default function LoginPage() {
             </form>
           )}
 
-          <div className="mt-5 pt-4 border-t border-ink-800/50">
-            <p className="text-xs text-ink-500 mb-2 text-center">体验账号（密码登录）</p>
-            <div className="flex gap-2">
-              {["libai", "caocao", "songhuizong"].map((u) => (
-                <button
-                  key={u}
-                  onClick={() => quickDemoLogin(u)}
-                  disabled={loading}
-                  className="flex-1 py-1.5 bg-ink-800 hover:bg-ink-700 text-ink-300 text-xs rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {u}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-ink-600 text-center mt-2">密码: demo123</p>
-          </div>
         </div>
       </motion.div>
     </div>
