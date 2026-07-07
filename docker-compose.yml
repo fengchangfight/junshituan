@@ -122,6 +122,11 @@ services:
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       # EMBEDDING_MODEL: embedding-2
       # EMBEDDING_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+      # SMS (Alibaba Cloud)
+      ALIBABACLOUD_ACCESS_KEY_ID: ${ALIBABACLOUD_ACCESS_KEY_ID:-}
+      ALIBABACLOUD_ACCESS_KEY_SECRET: ${ALIBABACLOUD_ACCESS_KEY_SECRET:-}
+      SMS_SIGN_NAME: ${SMS_SIGN_NAME:-恒创联众}
+      SMS_TEMPLATE_CODE: ${SMS_TEMPLATE_CODE:-SMS_100001}
       # Auth
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000"]}'
