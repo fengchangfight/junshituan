@@ -77,7 +77,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <span className="text-3xl">&#9876;&#65039;</span>
           <h1 className="text-2xl font-display text-ancient-500 mt-2">军师团</h1>
-          <p className="text-sm text-ink-500 mt-1">手机号登录，秒进议事厅</p>
+          <p className="text-sm text-ink-500 mt-1">验证码登录，秒进议事厅</p>
         </div>
 
         <div className="bg-ink-900/70 border border-ink-800/50 rounded-2xl p-6">
@@ -88,7 +88,7 @@ export default function LoginPage() {
                 mode === "phone" ? "bg-ink-700 text-ink-100" : "text-ink-400"
               }`}
             >
-              <Smartphone size={14} className="inline mr-1" />手机登录
+              <Smartphone size={14} className="inline mr-1" />验证码登录
             </button>
             <button
               onClick={() => { setMode("password"); setError(""); }}
