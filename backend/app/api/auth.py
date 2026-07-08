@@ -242,6 +242,14 @@ async def delete_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    # Delete user's sessions first (FK cascade to messages/checkpoints)
+    from app.models.db_models import Session as DBSession
+    sessions_result = await db.execute(select(DBSession).where(DBSession.user_id == user_id))
+    for s in sessions_result.scalars().all():
+        await db.delete(s)
+    await db.flush()
+
     await db.delete(user)
     await db.commit()
     return {"status": "deleted"}
