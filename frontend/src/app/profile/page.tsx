@@ -27,6 +27,8 @@ export default function ProfilePage() {
   const [showUsers, setShowUsers] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [createdInfo, setCreatedInfo] = useState<{username: string; password: string} | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{id: string; username: string} | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
   const isSuperAdmin = role === "super_admin";
 
   const loadUsers = () => {
@@ -46,10 +48,16 @@ export default function ProfilePage() {
     finally { setCreatingUser(false); }
   };
 
-  const handleDeleteUser = async (userId: string, username: string) => {
-    if (!confirm(`确定删除用户 ${username}？此操作不可撤销。`)) return;
-    try { await deleteUserById(userId); loadUsers(); }
+  const handleDeleteUser = (userId: string, username: string) => {
+    setDeleteTarget({ id: userId, username });
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setDeletingUser(true);
+    try { await deleteUserById(deleteTarget.id); loadUsers(); }
     catch (e: any) { setError(e.message); }
+    finally { setDeletingUser(false); setDeleteTarget(null); }
   };
 
   const [curPwd, setCurPwd] = useState("");
@@ -249,6 +257,42 @@ export default function ProfilePage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Delete user confirm modal ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setDeleteTarget(null)}>
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-ink-900 border border-red-800/50 rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-red-400">删除用户</h3>
+                <p className="text-xs text-ink-500 mt-0.5">此操作不可撤销</p>
+              </div>
+            </div>
+            <p className="text-sm text-ink-300 mb-4">
+              确定删除用户 <span className="text-ink-100 font-bold">{deleteTarget.username}</span> 吗？其所有会话、消息和记忆将被永久清除。
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-ink-800 border border-ink-700 text-ink-300 text-sm hover:text-ink-200 transition-colors">
+                取消
+              </button>
+              <button onClick={confirmDeleteUser} disabled={deletingUser}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                {deletingUser ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                确认删除
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>
