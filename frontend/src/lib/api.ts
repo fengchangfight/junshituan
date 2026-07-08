@@ -93,6 +93,27 @@ export async function changePassword(currentPassword: string, newPassword: strin
   }
 }
 
+export async function fetchUsers(): Promise<Array<{id: string; username: string; display_name: string; role: string; created_at: string}>> {
+  const res = await fetch(`${API_BASE}/api/auth/admin/users`, { headers: getAuthHeaders() });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function quickCreateUser(): Promise<{id: string; username: string; password: string}> {
+  const res = await fetch(`${API_BASE}/api/auth/admin/users`, {
+    method: "POST", headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("创建失败");
+  return res.json();
+}
+
+export async function deleteUserById(userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/admin/users/${userId}`, {
+    method: "DELETE", headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("删除失败");
+}
+
 export async function register(username: string, password: string, displayName?: string) {
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",

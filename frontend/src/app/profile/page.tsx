@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { getToken, changePassword } from "@/lib/api";
-import { ArrowLeft, Loader2, Camera } from "lucide-react";
+import { getToken, changePassword, fetchUsers, quickCreateUser, deleteUserById } from "@/lib/api";
+import { ArrowLeft, Loader2, Camera, UserPlus, Trash2, Shield } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -21,6 +21,36 @@ export default function ProfilePage() {
   const [role, setRole] = useState("");
   const [hasPassword, setHasPassword] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Admin user management
+  const [users, setUsers] = useState<Array<{id: string; username: string; display_name: string; role: string; created_at: string}>>([]);
+  const [showUsers, setShowUsers] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createdInfo, setCreatedInfo] = useState<{username: string; password: string} | null>(null);
+  const isSuperAdmin = role === "super_admin";
+
+  const loadUsers = () => {
+    if (!isSuperAdmin) return;
+    fetchUsers().then(setUsers).catch(() => {});
+  };
+
+  useEffect(() => { loadUsers(); }, [role]);
+
+  const handleQuickCreate = async () => {
+    setCreatingUser(true); setError("");
+    try {
+      const info = await quickCreateUser();
+      setCreatedInfo(info);
+      loadUsers();
+    } catch (e: any) { setError(e.message); }
+    finally { setCreatingUser(false); }
+  };
+
+  const handleDeleteUser = async (userId: string, username: string) => {
+    if (!confirm(`确定删除用户 ${username}？此操作不可撤销。`)) return;
+    try { await deleteUserById(userId); loadUsers(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const [curPwd, setCurPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -177,6 +207,50 @@ export default function ProfilePage() {
           更新密码
         </button>
       </div>
+
+      {/* ── User Management (super admin only) ── */}
+      {isSuperAdmin && (
+        <div className="mt-8 p-4 rounded-xl bg-ink-900/40 border border-amber-800/30">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+              <Shield size={14} /> 用户管理
+            </h3>
+            <div className="flex items-center gap-2">
+              {createdInfo && (
+                <span className="text-[10px] text-emerald-400 bg-emerald-900/20 px-2 py-0.5 rounded">
+                  已创建：{createdInfo.username} / {createdInfo.password}
+                </span>
+              )}
+              <button onClick={handleQuickCreate} disabled={creatingUser}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-600/20 border border-amber-600/40 text-amber-400 text-xs hover:bg-amber-600/30 disabled:opacity-50 transition-colors">
+                {creatingUser ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />}
+                快速添加
+              </button>
+              <button onClick={() => { setShowUsers(!showUsers); loadUsers(); }}
+                className="text-xs text-ink-500 hover:text-ink-300 transition-colors">
+                {showUsers ? "收起" : `展开 (${users.length})`}
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] text-ink-500 mb-2">随机用户名 + 统一密码 demo123，用于快速添加测试账号。</p>
+          {showUsers && (
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {users.map((u) => (
+                <div key={u.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-ink-800/30 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-ink-300 truncate">{u.display_name || u.username}</span>
+                    <span className="text-ink-600 text-[10px]">{u.role}</span>
+                  </div>
+                  <button onClick={() => handleDeleteUser(u.id, u.username)}
+                    className="p-1 rounded text-ink-600 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

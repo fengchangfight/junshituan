@@ -182,6 +182,71 @@ async def update_user_role(
     return {"status": "ok", "user_id": user_id, "role": req.role}
 
 
+# ── Admin User Management ────────────────────────────────────────────────
+
+@router.get("/admin/users")
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_super_admin),
+):
+    """List all users (super admin only)."""
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    users = result.scalars().all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "display_name": u.display_name or "",
+            "role": u.role,
+            "created_at": u.created_at.isoformat() if u.created_at else "",
+        }
+        for u in users
+    ]
+
+
+@router.post("/admin/users", status_code=201)
+async def quick_create_user(
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_super_admin),
+):
+    """Quick-create a test user with random username and fixed password (super admin only)."""
+    import random, string
+    username = "test" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    existing = await db.execute(select(User).where(User.username == username))
+    while existing.scalar_one_or_none():
+        username = "test" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        existing = await db.execute(select(User).where(User.username == username))
+
+    user = User(
+        username=username,
+        display_name=username,
+        hashed_password=hash_password("demo123"),
+        role=ROLE_USER,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return {"id": user.id, "username": username, "password": "demo123"}
+
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_super_admin),
+):
+    """Delete a user (super admin only). Cannot delete self."""
+    if user_id == _super.id:
+        raise HTTPException(status_code=400, detail="不能删除自己")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    await db.delete(user)
+    await db.commit()
+    return {"status": "deleted"}
+
+
 # ── Phone SMS Login ────────────────────────────────────────────────────────
 
 class SendCodeRequest(BaseModel):
