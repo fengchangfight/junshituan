@@ -243,11 +243,14 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    # Delete user's sessions first (FK cascade to messages/checkpoints)
-    from app.models.db_models import Session as DBSession
+    # Delete user's sessions + memories first (FK NOT NULL constraints)
+    from app.models.db_models import Session as DBSession, UserMemory
     sessions_result = await db.execute(select(DBSession).where(DBSession.user_id == user_id))
     for s in sessions_result.scalars().all():
         await db.delete(s)
+    memories_result = await db.execute(select(UserMemory).where(UserMemory.user_id == user_id))
+    for m in memories_result.scalars().all():
+        await db.delete(m)
     await db.flush()
 
     await db.delete(user)
