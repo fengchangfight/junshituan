@@ -95,16 +95,14 @@ services:
     ports:
       - "8001:3000"
 
-  # ── pgAdmin (PostgreSQL web GUI) ────────────────────────────────
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: junshituan-pgadmin
+  # ── pgweb (PostgreSQL web GUI, lightweight) ────────────────────
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: junshituan-pgweb
     restart: unless-stopped
+    command: pgweb --bind=0.0.0.0 --listen=80 --url=postgres://${POSTGRES_USER:-junshituan}:${POSTGRES_PASSWORD:-junshituan_secret}@postgres:5432/junshituan?sslmode=disable
     depends_on:
       - postgres
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@junshituan.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-change-me}
     ports:
       - "8865:80"
 
