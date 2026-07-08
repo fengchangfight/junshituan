@@ -1,5 +1,5 @@
 # 军师团 (Junshituan) — AI Advisory Council
-
+[demo](https://www.junshituan.com/)
 > 召集智者，组建专属顾问团。v2.1
 
 一个 AI 赋能的虚拟议事厅。选择历史名人或创建你自己的 AI 军师——每位军师以独特的思维框架、语言风格和知识体系独立作答。支持实时联网搜索、知识库 RAG、多军师群聊 @mention 协作。仿佛你真的在与诸葛亮、孙子、王阳明围坐议事。
@@ -7,6 +7,8 @@
 ![军师选择](军师board.png)
 ![对话界面](chatsample1.png)
 ---
+
+
 
 ## 亮点
 
