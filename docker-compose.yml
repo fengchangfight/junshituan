@@ -95,6 +95,19 @@ services:
     ports:
       - "8001:3000"
 
+  # ── pgAdmin (PostgreSQL web GUI) ────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: junshituan-pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@junshituan.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-change-me}
+    ports:
+      - "8865:80"
+
   # ── Backend ─────────────────────────────────────────────────────
   backend:
     build:
