@@ -424,12 +424,9 @@ function CouncilChat() {
       // Clean up hidden DOM
       document.body.removeChild(container);
 
-      // Show in preview modal instead of downloading
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        setExportImageUrl(url);
-      }
+      // Use data URI (not blob) — WeChat needs self-contained data to save/share
+      const dataUrl = canvas.toDataURL("image/png");
+      setExportImageUrl(dataUrl);
     } catch (e) {
       console.error("Export failed:", e);
     } finally {
@@ -438,10 +435,7 @@ function CouncilChat() {
   }, [groupName, messages, advisors]);
 
   const closePreview = () => {
-    if (exportImageUrl) {
-      URL.revokeObjectURL(exportImageUrl);
-      setExportImageUrl(null);
-    }
+    setExportImageUrl(null);
   };
 
   const handleInviteAdvisors = useCallback(async (ids: string[]) => {
