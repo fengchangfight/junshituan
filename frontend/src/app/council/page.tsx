@@ -405,6 +405,31 @@ function CouncilChat() {
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
+      // ── Pre-load QR code as data URI ──────────────────────────────
+      let qrDataUrl = "";
+      try {
+        const qrBlob = await fetch(
+          "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://www.junshituan.com&margin=6&color=07c160&bgcolor=0f0f1a"
+        ).then(r => r.blob());
+        qrDataUrl = await new Promise<string>(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(qrBlob);
+        });
+      } catch {}
+
+      const brandHTML =
+        `<div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 0;">` +
+        `<div style="text-align:right;">` +
+        `<div style="font-size:15px;font-weight:bold;color:#d4852c;letter-spacing:1px;margin-bottom:2px;">⚔️ 军师团</div>` +
+        `<div style="font-size:11px;color:#6b6b7b;margin-bottom:4px;">junshituan.com</div>` +
+        `<div style="font-size:10px;color:#4a4a5a;">召集你的智者团</div>` +
+        `</div>` +
+        (qrDataUrl
+          ? `<div style="text-align:center;"><img src="${qrDataUrl}" style="width:80px;height:80px;border-radius:8px;border:2px solid rgba(7,193,96,0.3);" /><div style="font-size:10px;color:#6b6b7b;margin-top:4px;">长按识别二维码</div></div>`
+          : `<div style="width:80px;height:80px;border-radius:8px;border:2px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;color:#4a4a5a;">扫码访问</div>`) +
+        `</div>`;
+
       // Build a clean capture DOM — mobile-width, chat-style, no UI chrome
       const container = document.createElement("div");
       container.style.cssText =
@@ -416,6 +441,12 @@ function CouncilChat() {
       header.style.cssText = "text-align:center;padding:12px 0 16px;border-bottom:1px solid rgba(180,140,60,0.25);margin-bottom:16px;";
       header.innerHTML = `<div style="font-size:20px;color:#d4852c;letter-spacing:2px;margin-bottom:4px;">⚔️ ${groupName}</div><div style="font-size:11px;color:#6b6b7b;">${messages.filter(m => !m.isStreaming).length} 条消息</div>`;
       container.appendChild(header);
+
+      // ── Top branding ──────────────────────────────────────────────
+      const brandTop = document.createElement("div");
+      brandTop.style.cssText = "border-bottom:1px solid rgba(180,140,60,0.15);margin-bottom:16px;";
+      brandTop.innerHTML = brandHTML;
+      container.appendChild(brandTop);
 
       // Messages
       const msgContainer = document.createElement("div");
@@ -450,31 +481,11 @@ function CouncilChat() {
       }
       container.appendChild(msgContainer);
 
-      // Branding footer with QR code
-      const brandFooter = document.createElement("div");
-      brandFooter.style.cssText = "margin-top:20px;padding-top:16px;border-top:1px solid rgba(180,140,60,0.2);display:flex;align-items:center;justify-content:center;gap:16px;";
-      // Load QR code as data URI (bypass CORS issues with html2canvas)
-      let qrDataUrl = "";
-      try {
-        const qrBlob = await fetch(
-          "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://www.junshituan.com&margin=6&color=07c160&bgcolor=0f0f1a"
-        ).then(r => r.blob());
-        qrDataUrl = await new Promise<string>(resolve => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(qrBlob);
-        });
-      } catch {}
-      brandFooter.innerHTML =
-        `<div style="text-align:right;">` +
-        `<div style="font-size:15px;font-weight:bold;color:#d4852c;letter-spacing:1px;margin-bottom:2px;">⚔️ 军师团</div>` +
-        `<div style="font-size:11px;color:#6b6b7b;margin-bottom:4px;">junshituan.com</div>` +
-        `<div style="font-size:10px;color:#4a4a5a;">召集你的智者团</div>` +
-        `</div>` +
-        (qrDataUrl
-          ? `<img src="${qrDataUrl}" style="width:80px;height:80px;border-radius:8px;border:2px solid rgba(7,193,96,0.3);" />`
-          : `<div style="width:80px;height:80px;border-radius:8px;border:2px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;color:#4a4a5a;">扫码访问</div>`);
-      container.appendChild(brandFooter);
+      // ── Bottom branding ────────────────────────────────────────────
+      const brandBottom = document.createElement("div");
+      brandBottom.style.cssText = "margin-top:20px;padding-top:16px;border-top:1px solid rgba(180,140,60,0.2);";
+      brandBottom.innerHTML = brandHTML;
+      container.appendChild(brandBottom);
 
       // Render to canvas
       const canvas = await html2canvas(container, {
