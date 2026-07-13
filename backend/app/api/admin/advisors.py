@@ -62,7 +62,10 @@ async def list_advisors(
 ):
     """List advisors: admins see all, regular users see only their own private ones."""
     result_rows = await db.execute(
-        select(PersonaDB).options(selectinload(PersonaDB.creator))
+        select(PersonaDB).options(
+            selectinload(PersonaDB.creator),
+            selectinload(PersonaDB.documents),
+        )
     )
     db_personas = result_rows.scalars().all()
 
@@ -72,10 +75,6 @@ async def list_advisors(
 
     result = []
     for db_p in db_personas:
-        docs_stmt = select(KnowledgeDocument).where(
-            KnowledgeDocument.persona_id == db_p.id
-        )
-        docs_result = await db.execute(docs_stmt)
         docs = [
             KnowledgeDocOut(
                 id=d.id,
@@ -88,7 +87,7 @@ async def list_advisors(
                 created_at=d.created_at.isoformat() if d.created_at else "",
                 updated_at=d.updated_at.isoformat() if d.updated_at else "",
             )
-            for d in docs_result.scalars().all()
+            for d in db_p.documents
         ]
 
         result.append(
