@@ -524,7 +524,7 @@ function CouncilChat() {
   return (
     <div className="flex flex-col h-dvh overflow-hidden bg-ink-950">
       {/* ── Top bar ── */}
-      <div className="sticky top-0 z-30 shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
+      <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
           <a href="/" className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"><ArrowLeft size={20} className="text-ink-300" /></a>
           <div className="flex-1 min-w-0">
@@ -567,7 +567,7 @@ function CouncilChat() {
       </div>
 
       {/* ── Mobile advisor strip ── */}
-      <div className="md:hidden sticky top-[53px] z-30 shrink-0 bg-ink-900/80 border-b border-ink-800/50 px-2 py-1.5">
+      <div className="md:hidden shrink-0 bg-ink-900/80 border-b border-ink-800/50 px-2 py-1.5">
         <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => setShowSidebar(true)}
