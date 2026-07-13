@@ -8,7 +8,6 @@ from app.models.db_models import User, PersonaDB
 from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest, RenameSessionRequest
 from app.core.security import require_user
 from app.services.council_service import council_service
-from app.services.memory.session_store import session_store
 from app.services.persona_engine import get_persona_engine
 from sqlalchemy import select
 
@@ -293,6 +292,9 @@ async def export_session(
 </html>"""
 
     return HTMLResponse(content=html, status_code=200)
+
+
+@router.post("/sessions/{session_id}/ask")
 async def ask_council(
     session_id: str,
     req: AskRequest,
