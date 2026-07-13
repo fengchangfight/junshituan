@@ -183,8 +183,26 @@ export default function AdminAdvisorsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="animate-spin text-ink-500" size={24} />
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-6">
+          <div className="h-7 w-40 bg-ink-800 rounded animate-pulse mb-2" />
+          <div className="h-5 w-64 bg-ink-800 rounded animate-pulse" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-4 p-4 rounded-xl bg-ink-900/50 border border-ink-800/50 animate-pulse"
+            >
+              <div className="w-10 h-10 rounded-full bg-ink-800 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-24 bg-ink-800 rounded" />
+                <div className="h-3 w-48 bg-ink-800 rounded" />
+              </div>
+              <div className="w-4 h-4 bg-ink-800 rounded" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

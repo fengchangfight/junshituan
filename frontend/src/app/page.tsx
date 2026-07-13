@@ -32,6 +32,7 @@ export default function HomePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeCategory, setActiveCategory] = useState<string>("全部");
   const [visibilityTab, setVisibilityTab] = useState<"全部" | "公共" | "我的">("全部");
+  const [initLoading, setInitLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
@@ -50,7 +51,8 @@ export default function HomePage() {
   useEffect(() => {
     fetchAdvisors()
       .then(setAdvisors)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setInitLoading(false));
     setIsLoggedIn(!!getToken());
   }, []);
 
@@ -283,7 +285,23 @@ export default function HomePage() {
             </div>
           </motion.button>
 
-          {filtered.map((advisor) => (
+          {initLoading ? (
+            Array.from({ length: 10 }).map((_, i) => (
+              <motion.div
+                key={`skel-${i}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="w-full p-3 sm:p-5 rounded-xl sm:rounded-2xl border-2 border-ink-800/50 bg-ink-900/40 animate-pulse"
+              >
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-ink-800" />
+                  <div className="w-16 h-3 bg-ink-800 rounded" />
+                  <div className="w-20 h-2 bg-ink-800 rounded" />
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            filtered.map((advisor) => (
             <AdvisorCard
               key={advisor.id}
               advisor={advisor}
@@ -291,7 +309,8 @@ export default function HomePage() {
               onToggle={() => toggleSelect(advisor.id)}
               disabled={!selected.has(advisor.id) && selected.size >= 12}
             />
-          ))}
+          ))
+        )}
         </AnimatePresence>
       </motion.div>
 
