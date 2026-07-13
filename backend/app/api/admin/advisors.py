@@ -4,6 +4,10 @@ import os
 import time
 from datetime import datetime, timezone
 
+from app.core.logging import get_logger
+
+log = get_logger("admin")
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select, update, or_
 from sqlalchemy.orm import selectinload, defer
