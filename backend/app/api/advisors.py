@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, defer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -33,7 +33,15 @@ async def list_advisors(
 ):
     """List advisors: public published + user's own private ones."""
     result = await db.execute(
-        select(PersonaDB).options(selectinload(PersonaDB.creator))
+        select(PersonaDB).options(
+            selectinload(PersonaDB.creator),
+            defer(PersonaDB.skill_config),
+            defer(PersonaDB.thinking_framework),
+            defer(PersonaDB.voice),
+            defer(PersonaDB.core_beliefs),
+            defer(PersonaDB.canonical_works),
+            defer(PersonaDB.knowledge_domain),
+        )
     )
     all_personas = result.scalars().all()
 

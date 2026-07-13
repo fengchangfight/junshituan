@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select, update, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -64,7 +64,15 @@ async def list_advisors(
     result_rows = await db.execute(
         select(PersonaDB).options(
             selectinload(PersonaDB.creator),
-            selectinload(PersonaDB.documents),
+            selectinload(PersonaDB.documents).options(
+                defer(KnowledgeDocument.content),   # skip full text in list view
+            ),
+            defer(PersonaDB.skill_config),          # skip large cognitive OS JSON
+            defer(PersonaDB.thinking_framework),
+            defer(PersonaDB.voice),
+            defer(PersonaDB.core_beliefs),
+            defer(PersonaDB.canonical_works),
+            defer(PersonaDB.knowledge_domain),
         )
     )
     db_personas = result_rows.scalars().all()
@@ -100,12 +108,12 @@ async def list_advisors(
                 avatar=db_p.avatar,
                 short_bio=db_p.short_bio or "",
                 style=db_p.style or "",
-                thinking_framework=db_p.thinking_framework or {},
-                voice=db_p.voice or {},
-                core_beliefs=db_p.core_beliefs or [],
-                canonical_works=db_p.canonical_works or [],
-                knowledge_domain=db_p.knowledge_domain or {},
-                skill_config=db_p.skill_config,
+                thinking_framework={},       # deferred — list doesn't need this
+                voice={},
+                core_beliefs=[],
+                canonical_works=[],
+                knowledge_domain={},
+                skill_config=None,           # deferred — detail page loads separately
                 yaml_config=db_p.yaml_config or "",
                 kb_status=db_p.kb_status or "empty",
                 kb_doc_count=db_p.kb_doc_count or 0,
