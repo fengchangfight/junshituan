@@ -62,10 +62,17 @@ async def get_current_user(
 
     from app.models.db_models import User
     from app.core.logging import set_log_user
+    from app.services.cache import cache
 
-    stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    cache_key = f"user:{user_id}"
+    user = cache.get(cache_key)
+    if user is None:
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is not None:
+            cache.set(cache_key, user, ttl=10.0)
+
     if user:
         set_log_user(user.username)
     return user

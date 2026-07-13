@@ -130,6 +130,10 @@ async def update_profile(
         user.avatar_url = req.avatar_url
     await db.commit()
     await db.refresh(user)
+
+    from app.services.cache import cache
+    cache.invalidate(f"user:{user.id}")
+
     return {"status": "ok", "avatar_url": user.avatar_url, "display_name": user.display_name}
 
 
@@ -156,6 +160,10 @@ async def change_password(
 
     user.hashed_password = hash_password(req.new_password)
     await db.commit()
+
+    from app.services.cache import cache
+    cache.invalidate(f"user:{user.id}")
+
     return {"status": "ok", "message": "密码已更新"}
 
 
