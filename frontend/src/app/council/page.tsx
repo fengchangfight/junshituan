@@ -522,7 +522,7 @@ function CouncilChat() {
   const hasStreaming = messages.some((m) => m.isStreaming);
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-ink-950">
+    <div className="fixed top-12 sm:top-16 inset-x-0 bottom-0 flex flex-col bg-ink-950">
       {/* ── Top bar ── */}
       <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
