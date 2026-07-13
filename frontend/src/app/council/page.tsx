@@ -363,6 +363,7 @@ function CouncilChat() {
   const groupName = title || advisors.map((a) => a.name).join("、") + "的议事厅";
 
   const [exporting, setExporting] = useState(false);
+  const [exportImageUrl, setExportImageUrl] = useState<string | null>(null);
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
@@ -382,15 +383,16 @@ function CouncilChat() {
       const msgContainer = document.createElement("div");
       for (const m of messages) {
         if (m.isStreaming) continue;
+        const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
         if (m.role === "system") {
           const el = document.createElement("div");
           el.style.cssText = "display:flex;justify-content:center;padding:6px 0;margin-bottom:6px;";
-          el.innerHTML = `<span style="font-size:11px;color:#6b6b7b;background:rgba(255,255,255,0.04);padding:4px 12px;border-radius:12px;">${m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</span>`;
+          el.innerHTML = `<span style="font-size:11px;color:#6b6b7b;background:rgba(255,255,255,0.04);padding:4px 12px;border-radius:12px;">${esc(m.content)}</span>`;
           msgContainer.appendChild(el);
         } else if (m.role === "user") {
           const el = document.createElement("div");
           el.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:8px;";
-          el.innerHTML = `<div style="max-width:80%;padding:10px 14px;border-radius:16px;border-bottom-right-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:linear-gradient(135deg,#b86b2a,#d4852c);color:#fff;">${m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>`;
+          el.innerHTML = `<div style="max-width:80%;padding:10px 14px;border-radius:16px;border-bottom-right-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:linear-gradient(135deg,#b86b2a,#d4852c);color:#fff;">${esc(m.content)}</div>`;
           msgContainer.appendChild(el);
         } else {
           const adv = advisors.find(a => a.id === m.advisorId);
@@ -399,7 +401,7 @@ function CouncilChat() {
             : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2a2a3e,#3a3a4e);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;color:#d0cfd4;flex-shrink:0;">${(m.advisorName || "?")[0]}</div>`;
           const el = document.createElement("div");
           el.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;";
-          el.innerHTML = `${avatarHtml}<div style="min-width:0;"><div style="font-size:11px;font-weight:600;color:#90909e;margin-bottom:3px;">${m.advisorName || ""}</div><div style="max-width:100%;padding:10px 14px;border-radius:16px;border-top-left-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);">${m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div></div>`;
+          el.innerHTML = `${avatarHtml}<div style="min-width:0;"><div style="font-size:11px;font-weight:600;color:#90909e;margin-bottom:3px;">${m.advisorName || ""}</div><div style="max-width:100%;padding:10px 14px;border-radius:16px;border-top-left-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);">${esc(m.content)}</div></div>`;
           msgContainer.appendChild(el);
         }
       }
@@ -408,7 +410,7 @@ function CouncilChat() {
       // Footer
       const footer = document.createElement("div");
       footer.style.cssText = "text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:#4a4a5a;";
-      footer.textContent = "由 议事厅 导出";
+      footer.textContent = "由 议事厅 导出 · 长按图片分享";
       container.appendChild(footer);
 
       // Render to canvas
@@ -419,20 +421,14 @@ function CouncilChat() {
         logging: false,
       });
 
-      // Clean up
+      // Clean up hidden DOM
       document.body.removeChild(container);
 
-      // Download
+      // Show in preview modal instead of downloading
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
       if (blob) {
         const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${groupName}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setExportImageUrl(url);
       }
     } catch (e) {
       console.error("Export failed:", e);
@@ -440,6 +436,13 @@ function CouncilChat() {
       setExporting(false);
     }
   }, [groupName, messages, advisors]);
+
+  const closePreview = () => {
+    if (exportImageUrl) {
+      URL.revokeObjectURL(exportImageUrl);
+      setExportImageUrl(null);
+    }
+  };
 
   const handleInviteAdvisors = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
@@ -816,6 +819,56 @@ function CouncilChat() {
           </motion.div>
         </div>
       )}
+
+      {/* ── Export preview modal ──────────────────────────────────── */}
+      <AnimatePresence>
+        {exportImageUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4"
+            onClick={closePreview}
+          >
+            <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+              <button
+                onClick={() => {
+                  const a = document.createElement("a");
+                  a.href = exportImageUrl;
+                  a.download = `${groupName}.png`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }}
+                className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium hover:bg-white/20 transition-colors"
+              >
+                保存图片
+              </button>
+              <button
+                onClick={closePreview}
+                className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <motion.p
+              initial={{ y: -10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="text-white/60 text-sm mb-3"
+            >
+              长按图片即可分享到微信
+            </motion.p>
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              src={exportImageUrl}
+              alt={groupName}
+              className="max-h-[85vh] max-w-full rounded-xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
