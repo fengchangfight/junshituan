@@ -424,24 +424,25 @@ function CouncilChat() {
         "position:fixed;left:-9999px;top:0;width:420px;background:#0f0f1a;padding:16px 12px 24px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;color:#d0cfd4;line-height:1.6;z-index:99999;";
       document.body.appendChild(container);
 
-      // ── Header row: title left, mini-brand right ──────────────────
+      // Header
       const header = document.createElement("div");
-      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 0 14px;border-bottom:1px solid rgba(180,140,60,0.25);margin-bottom:16px;";
-      header.innerHTML =
-        `<div>` +
-        `<div style="font-size:20px;color:#d4852c;letter-spacing:2px;margin-bottom:3px;">⚔️ ${groupName}</div>` +
-        `<div style="font-size:11px;color:#6b6b7b;">${messages.filter(m => !m.isStreaming).length} 条消息</div>` +
-        `</div>` +
-        `<div style="display:flex;align-items:center;gap:8px;">` +
+      header.style.cssText = "text-align:center;padding:12px 0 16px;border-bottom:1px solid rgba(180,140,60,0.25);margin-bottom:16px;";
+      header.innerHTML = `<div style="font-size:20px;color:#d4852c;letter-spacing:2px;margin-bottom:4px;">⚔️ ${groupName}</div><div style="font-size:11px;color:#6b6b7b;">${messages.filter(m => !m.isStreaming).length} 条消息</div>`;
+      container.appendChild(header);
+
+      // ── Top branding ──────────────────────────────────────────────
+      const brandTop = document.createElement("div");
+      brandTop.style.cssText = "padding:12px 0;border-bottom:1px solid rgba(180,140,60,0.15);margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:12px;";
+      brandTop.innerHTML =
         `<div style="text-align:right;font-size:11px;color:#6b6b7b;line-height:1.5;">` +
-        `<div style="font-weight:bold;color:#d4852c;font-size:13px;">⚔️ 军师团</div>` +
+        `<div style="font-weight:bold;color:#d4852c;font-size:14px;">⚔️ 军师团</div>` +
         `<div>junshituan.com</div>` +
+        `<div style="font-size:10px;color:#4a4a5a;">召集你的智者团</div>` +
         `</div>` +
         (qrDataUrl
-          ? `<img src="${qrDataUrl}" style="width:52px;height:52px;border-radius:6px;border:1.5px solid rgba(7,193,96,0.25);" />`
-          : ``) +
-        `</div>`;
-      container.appendChild(header);
+          ? `<div style="text-align:center;"><img src="${qrDataUrl}" style="width:64px;height:64px;border-radius:8px;border:2px solid rgba(7,193,96,0.25);" /><div style="font-size:10px;color:#6b6b7b;margin-top:3px;">长按识别二维码</div></div>`
+          : ``);
+      container.appendChild(brandTop);
 
       // Messages
       const msgContainer = document.createElement("div");
@@ -479,15 +480,7 @@ function CouncilChat() {
       // ── Bottom branding ────────────────────────────────────────────
       const brandBottom = document.createElement("div");
       brandBottom.style.cssText = "margin-top:20px;padding-top:14px;border-top:1px solid rgba(180,140,60,0.2);display:flex;align-items:center;justify-content:center;gap:12px;";
-      brandBottom.innerHTML =
-        `<div style="text-align:right;font-size:11px;color:#6b6b7b;line-height:1.5;">` +
-        `<div style="font-weight:bold;color:#d4852c;font-size:14px;">⚔️ 军师团</div>` +
-        `<div>junshituan.com</div>` +
-        `<div style="font-size:10px;color:#4a4a5a;">召集你的智者团</div>` +
-        `</div>` +
-        (qrDataUrl
-          ? `<div style="text-align:center;"><img src="${qrDataUrl}" style="width:64px;height:64px;border-radius:8px;border:2px solid rgba(7,193,96,0.25);" /><div style="font-size:10px;color:#6b6b7b;margin-top:3px;">长按识别二维码</div></div>`
-          : `<div style="width:64px;height:64px;border-radius:8px;border:2px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;color:#4a4a5a;">扫码访问</div>`);
+      brandBottom.innerHTML = brandTop.innerHTML;
       container.appendChild(brandBottom);
 
       // Render to canvas
