@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _make_token(user: User) -> str:
-    return create_access_token(user.id, user.username, user.role)
+    return create_access_token(user.id, user.username, user.role, user.display_name or "", user.avatar_url or "")
 
 
 def _token_response(user: User, token: str) -> TokenOut:

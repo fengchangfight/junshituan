@@ -15,7 +15,7 @@ export function removeToken() {
   localStorage.removeItem("junshituan_token");
 }
 
-export function getUserInfo(): { username: string; isAdmin: boolean; role: string } | null {
+export function getUserInfo(): { username: string; isAdmin: boolean; role: string; displayName: string; avatarUrl: string } | null {
   const token = getToken();
   if (!token) return null;
   try {
@@ -26,7 +26,13 @@ export function getUserInfo(): { username: string; isAdmin: boolean; role: strin
     }
     const role = payload.role || "user";
     const isAdmin = role === "super_admin" || role === "admin" || role === "viewer";
-    return { username: payload.username || "", isAdmin, role };
+    return {
+      username: payload.username || "",
+      isAdmin,
+      role,
+      displayName: payload.display_name || payload.username || "",
+      avatarUrl: payload.avatar_url || "",
+    };
   } catch {
     return null;
   }

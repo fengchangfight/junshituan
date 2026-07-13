@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
-import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
+import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession, getUserInfo } from "@/lib/api";
 import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download } from "lucide-react";
 import html2canvas from "html2canvas";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
@@ -82,46 +82,84 @@ function CouncilChat() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [toolActivities, setToolActivities] = useState<Array<{id: string; advisorId: string; advisorName: string; toolName: string; query: string; status: "running"|"done"; ts: number; results?: Array<{title: string; href: string; snippet: string}>}>>([]);
   const [useWebSearch, setUseWebSearch] = useState(true);
+  const [userInfo, setUserInfo] = useState({ displayName: "", avatarUrl: "" });
+
+  useEffect(() => {
+    const info = getUserInfo();
+    if (info) setUserInfo({ displayName: info.displayName, avatarUrl: info.avatarUrl });
+  }, []);
 
   useEffect(() => {
     // Mobile: start with sidebar/tool-panel hidden so chat is front and center
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
       setShowSidebar(false);
       setShowToolPanel(false);
     }
 
+    // ── Show UI immediately with placeholders, then fill in real data ──
+    // Create placeholder advisors from URL params so the chat renders instantly
+    const placeholders = advisorIdsParam.map((id, i) => ({
+      id,
+      name: `军师${i + 1}`,
+      title: "",
+      category: "",
+      era: "",
+      avatar: "",
+      shortBio: "",
+      style: "",
+      kb_status: "",
+      kb_doc_count: 0,
+      is_published: true,
+      visibility: "public",
+      creator_id: "",
+    }));
+    setAdvisors(placeholders);
+
     async function init() {
+      // Load session history first — this is what the user wants to see
+      if (sessionId) {
+        const detail = await fetchSessionDetail(sessionId).catch(() => null);
+        if (detail) {
+          const existingIds = new Set(detail.advisor_ids || []);
+          const historyMsgs = buildMessagesFromSession(detail);
+          if (historyMsgs.length > 0) {
+            setMessages(historyMsgs);
+          }
+          // Expand placeholder advisors with any IDs from session not in URL params
+          const allIds = Array.from(new Set([...advisorIdsParam, ...Array.from(existingIds)]));
+          if (allIds.length > advisorIdsParam.length) {
+            const extraPlaceholders = allIds.filter(id => !advisorIdsParam.includes(id)).map((id, i) => ({
+              id,
+              name: `军师${advisorIdsParam.length + i + 1}`,
+              title: "", category: "", era: "", avatar: "", shortBio: "", style: "",
+              kb_status: "", kb_doc_count: 0, is_published: true, visibility: "public", creator_id: "",
+            }));
+            setAdvisors(prev => [...prev, ...extraPlaceholders]);
+          }
+        }
+      }
+
+      // Load full advisor list in background — fills in names, avatars, etc.
       const list = await fetchAdvisors().catch(() => []);
       setAllAdvisors(list);
 
-      // Resolve session advisors — create placeholders for deleted ones
-      const resolved = advisorIdsParam.map((id) => {
-        const found = list.find((a) => a.id === id);
-        return found || {
-          id,
-          name: "已删除",
-          title: "该军师已被删除",
-          category: "",
-          era: "",
-          avatar: "",
-          shortBio: "",
-          style: "",
-          visibility: "",
-        } as Advisor;
-      });
-      setAdvisors(resolved);
+      // Replace placeholders with real advisor data
+      setAdvisors(prev => prev.map(p => {
+        const real = list.find((a: Advisor) => a.id === p.id);
+        return real || p; // keep placeholder if deleted/not found
+      }));
 
-      if (sessionId) {
-        const detail = await fetchSessionDetail(sessionId).catch(() => null);
-        if (detail && detail.messages && detail.messages.length > 0) {
-          setMessages(buildMessagesFromSession(detail));
-        } else {
-          const names = resolved.map((a) => a.name).join("、");
-          setMessages([{ id: "system-welcome", role: "system", content: `${names} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }]);
+      // If no history loaded, show welcome message
+      setMessages(prev => {
+        if (prev.length === 0) {
+          const names = advisorIdsParam.map(id => {
+            const real = list.find((a: Advisor) => a.id === id);
+            return real?.name || "军师";
+          }).join("、");
+          return [{ id: "system-welcome", role: "system" as const, content: `${names} 已就位。请向军师团提问，或 @军师名 指定谁回答。`, timestamp: Date.now() }];
         }
-      } else {
-        setMessages([{ id: "system-welcome", role: "system", content: "议事厅已开启。请向军师团提问。", timestamp: Date.now() }]);
-      }
+        return prev;
+      });
       setInitialLoading(false);
     }
     init();
@@ -391,8 +429,13 @@ function CouncilChat() {
           msgContainer.appendChild(el);
         } else if (m.role === "user") {
           const el = document.createElement("div");
-          el.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:8px;";
-          el.innerHTML = `<div style="max-width:80%;padding:10px 14px;border-radius:16px;border-bottom-right-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:linear-gradient(135deg,#b86b2a,#d4852c);color:#fff;">${esc(m.content)}</div>`;
+          el.style.cssText = "display:flex;justify-content:flex-end;gap:8px;align-items:flex-start;margin-bottom:8px;";
+          const uAvatar = userInfo.avatarUrl;
+          const uName = userInfo.displayName || "我";
+          const avatarHtml = uAvatar
+            ? `<img src="${uAvatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'" />`
+            : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#b86b2a,#d4852c);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;color:#fff;flex-shrink:0;">${uName[0]}</div>`;
+          el.innerHTML = `<div style="min-width:0;max-width:80%;"><div style="font-size:11px;font-weight:600;color:#90909e;margin-bottom:3px;text-align:right;">${uName}</div><div style="padding:10px 14px;border-radius:16px;border-bottom-right-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:linear-gradient(135deg,#b86b2a,#d4852c);color:#fff;">${esc(m.content)}</div></div>${avatarHtml}`;
           msgContainer.appendChild(el);
         } else {
           const adv = advisors.find(a => a.id === m.advisorId);
@@ -476,14 +519,6 @@ function CouncilChat() {
     } catch { alert("邀请失败"); } finally { setInviting(false); }
   }, [sessionId, allAdvisors]);
 
-  if (initialLoading) {
-    return (
-      <div className="flex items-center justify-center h-[100dvh] bg-ink-950">
-        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }} className="text-4xl">⚔️</motion.div>
-      </div>
-    );
-  }
-
   const hasStreaming = messages.some((m) => m.isStreaming);
 
   return (
@@ -493,7 +528,9 @@ function CouncilChat() {
         <div className="flex items-center gap-2">
           <a href="/" className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"><ArrowLeft size={20} className="text-ink-300" /></a>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-bold text-ink-100 truncate">{groupName}</h2>
+            <h2 className="text-sm font-bold text-ink-100 truncate">{groupName}
+              {initialLoading && <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5 }} className="ml-2 text-xs text-ink-500 font-normal">加载中...</motion.span>}
+            </h2>
             <p className="text-xs text-ink-500 hidden sm:block">
               {replyingId ? `${advisors.find((a) => a.id === replyingId)?.name || "军师"} 正在发言...` : `${advisors.length}位军师在线 — 输入问题开始讨论`}
             </p>
@@ -664,7 +701,7 @@ function CouncilChat() {
 
                   return (
                     <div key={msg.id}>
-                      <ChatBubble message={msg} advisor={adv} avatarColor={AVATAR_COLORS[avatarIdx % AVATAR_COLORS.length]} showAvatar={showAvatar} />
+                      <ChatBubble message={msg} advisor={adv} avatarColor={AVATAR_COLORS[avatarIdx % AVATAR_COLORS.length]} showAvatar={showAvatar} userAvatar={userInfo.avatarUrl} userName={userInfo.displayName} />
                       {/* ── 接话选择器 ── */}
                       {isDone && !replyingId && !loading && (
                         <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="ml-10 mt-2 mb-3"

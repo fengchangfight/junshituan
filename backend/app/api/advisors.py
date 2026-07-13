@@ -2,7 +2,7 @@ import time
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, or_
-from sqlalchemy.orm import selectinload, defer
+from sqlalchemy.orm import selectinload, defer, load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -46,7 +46,9 @@ async def list_advisors(
         t_query = time.time()
         result = await db.execute(
             select(PersonaDB).options(
-                selectinload(PersonaDB.creator),
+                selectinload(PersonaDB.creator).options(
+                    load_only("id", "username", "display_name"),
+                ),
                 defer(PersonaDB.skill_config),
                 defer(PersonaDB.thinking_framework),
                 defer(PersonaDB.voice),
@@ -86,7 +88,11 @@ async def get_advisor(
     current_user=Depends(get_current_user),
 ):
     result = await db.execute(
-        select(PersonaDB).where(PersonaDB.id == persona_id).options(selectinload(PersonaDB.creator))
+        select(PersonaDB).where(PersonaDB.id == persona_id).options(
+            selectinload(PersonaDB.creator).options(
+                load_only("id", "username", "display_name"),
+            ),
+        )
     )
     p = result.scalar_one_or_none()
     if not p:

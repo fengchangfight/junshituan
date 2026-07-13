@@ -9,6 +9,8 @@ interface Props {
   advisor?: Advisor;
   avatarColor: string;
   showAvatar: boolean;
+  userAvatar?: string;
+  userName?: string;
 }
 
 function ThinkingDots() {
@@ -31,6 +33,8 @@ export default function ChatBubble({
   advisor,
   avatarColor,
   showAvatar,
+  userAvatar,
+  userName,
 }: Props) {
   if (message.role === "system") {
     return (
@@ -56,14 +60,27 @@ export default function ChatBubble({
       <motion.div
         initial={{ opacity: 0, x: 10 }}
         animate={{ opacity: 1, x: 0 }}
-        className="flex justify-end py-1.5"
+        className="flex justify-end gap-2.5 py-1.5"
       >
-        <div className="max-w-[75%]">
+        <div className="min-w-0 max-w-[75%]">
+          <div className="flex items-center gap-1.5 mb-0.5 mr-0.5 justify-end">
+            <span className="text-xs font-bold text-ink-300">
+              {userName || "我"}
+            </span>
+          </div>
           <motion.div className="bg-gradient-to-r from-ancient-600 to-ancient-700 text-white rounded-2xl rounded-tr-md px-4 py-2.5 text-sm leading-relaxed shadow-md">
             <p className="whitespace-pre-wrap break-words">
               {message.content}
             </p>
           </motion.div>
+        </div>
+        <div className="mt-0.5">
+          <Avatar
+            src={userAvatar || ""}
+            name={userName || "我"}
+            size="md"
+            colorClass="from-ancient-600 to-amber-600"
+          />
         </div>
       </motion.div>
     );
