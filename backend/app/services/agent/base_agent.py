@@ -134,7 +134,8 @@ class AgentState(TypedDict):
     complexity: str
 
     # Context management
-    context_summary: str
+    conversation_summary: str   # pre-computed summary from DB (covers old messages)
+    context_summary: str        # graph-level compression output
     tokens_used: int
 
     # Tool calling (ReAct loop)
@@ -245,19 +246,35 @@ class AdvisorAgentGraph:
             return ""
 
     @staticmethod
-    def _format_conversation(messages: list[BaseMessage], focus_turns: int = 2) -> str:
+    def _format_conversation(messages: list[BaseMessage], focus_turns: int = 2, summary: str = "") -> str:
         """Format conversation history with recency weighting.
 
-        Splits into two tiers:
+        If a pre-computed summary is provided (from DB cache), it replaces the
+        background tier entirely. Only recent messages are shown in full.
+        This avoids dumping 300 raw messages when resuming a long session.
+
+        Without summary, splits into two tiers:
         - Focus (last N turns): what the advisor should directly respond to
         - Background (older): for awareness only
-
-        This prevents topic drift in multi-topic conversations — the LLM
-        prioritizes the recent discussion without ignoring earlier context.
         """
         if not messages:
-            return ""
+            return f"## 对话历史摘要\n{summary}\n" if summary else ""
 
+        if summary:
+            # Summary covers old messages. Only show recent ones in full.
+            focus_count = focus_turns * 2
+            recent_msgs = messages[-focus_count:] if len(messages) > focus_count else messages
+            lines = [f"## 对话历史摘要\n{summary}\n"]
+            if recent_msgs:
+                lines.append("## 最近讨论（请重点回应这部分）")
+                for m in recent_msgs:
+                    if isinstance(m, HumanMessage):
+                        lines.append(f"[用户]: {m.content[:500]}")
+                    else:
+                        lines.append(m.content[:500])
+            return "\n".join(lines) + "\n"
+
+        # No summary — show all messages with recency weighting
         focus_count = focus_turns * 2  # Each turn = user msg + advisor msg
 
         if len(messages) <= focus_count:
@@ -332,9 +349,10 @@ class AdvisorAgentGraph:
         docs_text = "\n---\n".join(docs[:5]) if docs else ""
         msgs = state.get("messages", [])
         question = msgs[-1].content if msgs else "无"
+        cvs = state.get("conversation_summary", "")
 
         # Build message list for tool-calling API
-        conv_context = self._format_conversation(msgs[:-1])
+        conv_context = self._format_conversation(msgs[:-1], summary=cvs)
         full_prompt = f"""{self.system_prompt}
 
 ## 参考资料
@@ -513,7 +531,8 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         msgs = state.get("messages", [])
 
         question = msgs[-1].content if msgs else ''
-        conv_context = self._format_conversation(msgs[:-1])
+        cvs = state.get("conversation_summary", "")
+        conv_context = self._format_conversation(msgs[:-1], summary=cvs)
 
         prompt = f"""{self.system_prompt}
 
@@ -667,12 +686,14 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         on_token: Optional[Callable[[str], Awaitable[None]]] = None,
         on_tool_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         history: Optional[list[dict]] = None,
+        conversation_summary: str = "",
     ) -> str:
         """Run agent for a single user message. Returns advisor's response.
 
         on_token: per-request streaming callback via config — thread-safe.
         on_tool_progress: callback for tool execution progress events.
         history: optional conversation history for context injection.
+        conversation_summary: pre-computed summary of older messages (DB cached).
         """
         _ctx_tool_callback.set(on_tool_progress)
         config: RunnableConfig = {
@@ -694,6 +715,7 @@ complexity=complex：需要多步推理、对比分析、数学计算。
             "retrieval_query": "",
             "reasoning": "",
             "complexity": "simple",
+            "conversation_summary": conversation_summary,
             "context_summary": "",
             "tokens_used": 0,
             "pending_tool_calls": [],
@@ -721,12 +743,14 @@ complexity=complex：需要多步推理、对比分析、数学计算。
         on_token: Optional[Callable[[str], Awaitable[None]]] = None,
         on_tool_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
         history: Optional[list[dict]] = None,
+        conversation_summary: str = "",
     ) -> str:
         """Resume existing session with new user input.
 
-        If this persona has a checkpoint for this session, loads from it.
-        Otherwise builds context from the session's conversation history (DB).
-        This ensures advisors joining mid-conversation see the full discussion.
+        Messages always come from DB history (ChatMessage table) — the single
+        source of truth for conversation. Checkpoint only supplies execution
+        state (reasoning, complexity, context_summary, tokens_used) to avoid
+        redundant LLM recomputation across restarts.
         """
         _ctx_tool_callback.set(on_tool_progress)
         config: RunnableConfig = {
@@ -737,59 +761,46 @@ complexity=complex：需要多步推理、对比分析、数学计算。
             }
         }
 
+        # Messages: always from DB history (complete, all advisors).
+        # Checkpoint messages are a redundant subset — skip them.
+        messages = self._build_messages_from_history(history)
+        messages.append(HumanMessage(content=user_message))
+
+        # Execution state: prefer checkpoint cache to skip recomputation.
+        # Fall back to defaults if no checkpoint exists (new advisor in session).
         ckpt_tuple = await self.checkpointer.aget_tuple(config)
         if ckpt_tuple:
-            saved_channels = ckpt_tuple[1].get("channel_values", {})
-            # Merge checkpoint messages with full conversation history.
-            # The checkpoint only has THIS advisor's thread; other advisors'
-            # responses between this advisor's turns would be invisible.
-            saved_msgs = list(saved_channels.get("messages", []))
-            history_msgs = self._build_messages_from_history(history)
-            # Prepend history before checkpoint messages (recency-weighted in _reason)
-            merged_msgs = history_msgs + saved_msgs
-            state = {
-                "messages": merged_msgs,
-                "persona_id": saved_channels.get("persona_id", self.persona_id),
-                "persona_name": saved_channels.get("persona_name", self.persona_name),
-                "system_prompt": saved_channels.get("system_prompt", self.system_prompt),
-                "session_id": saved_channels.get("session_id", session_id),
-                "user_id": user_id,
-                "retrieved_docs": saved_channels.get("retrieved_docs", []),
-                "retrieval_query": saved_channels.get("retrieval_query", ""),
-                "reasoning": saved_channels.get("reasoning", ""),
-                "complexity": saved_channels.get("complexity", "simple"),
-                "context_summary": saved_channels.get("context_summary", ""),
-                "tokens_used": saved_channels.get("tokens_used", 0),
-                "pending_tool_calls": [],
-                "tool_messages": [],
-                "tool_rounds": 0,
-                "final_response": saved_channels.get("final_response", ""),
+            saved = ckpt_tuple[1].get("channel_values", {})
+            exec_state = {
+                "reasoning": saved.get("reasoning", ""),
+                "complexity": saved.get("complexity", "simple"),
+                "context_summary": saved.get("context_summary", ""),
+                "tokens_used": saved.get("tokens_used", 0),
             }
-            state["messages"].append(HumanMessage(content=user_message))
         else:
-            # No checkpoint — build context from session history.
-            # Critical: new advisors joining mid-conversation need to see the
-            # full discussion, not just the current system-generated prompt.
-            messages = self._build_messages_from_history(history)
-            messages.append(HumanMessage(content=user_message))
-            state = {
-                "messages": messages,
-                "persona_id": self.persona_id,
-                "persona_name": self.persona_name,
-                "system_prompt": self.system_prompt,
-                "session_id": session_id,
-                "user_id": user_id,
-                "retrieved_docs": [],
-                "retrieval_query": "",
+            exec_state = {
                 "reasoning": "",
                 "complexity": "simple",
                 "context_summary": "",
                 "tokens_used": 0,
-                "pending_tool_calls": [],
-                "tool_messages": [],
-                "tool_rounds": 0,
-                "final_response": "",
             }
+
+        state = {
+            "messages": messages,
+            "persona_id": self.persona_id,
+            "persona_name": self.persona_name,
+            "system_prompt": self.system_prompt,
+            "session_id": session_id,
+            "user_id": user_id,
+            "retrieved_docs": [],
+            "retrieval_query": "",
+            "pending_tool_calls": [],
+            "tool_messages": [],
+            "tool_rounds": 0,
+            "final_response": "",
+            "conversation_summary": conversation_summary,
+            **exec_state,
+        }
 
         t0 = time.perf_counter()
         try:

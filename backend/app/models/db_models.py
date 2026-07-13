@@ -124,6 +124,7 @@ class Session(Base):
 
     # Summary cache
     conversation_summary = Column(Text, default="")
+    last_summarized_seq = Column(Integer, nullable=True)
     message_count = Column(Integer, default=0)
     token_count_estimate = Column(Integer, default=0)
 

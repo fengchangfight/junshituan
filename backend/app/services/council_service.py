@@ -210,16 +210,30 @@ class CouncilService:
         # This ensures history contains only prior messages, not the current
         # question (which is passed separately as enhanced_question).
         conversation_history: list[dict] = []
+        conversation_summary: str = ""
         if is_resume:
             pending = self._pending_persists.pop(session_id, None)
             if pending and not pending.done():
                 await pending
+            summary = session.conversation_summary or ""
+            last_seq = session.last_summarized_seq
             history_msgs = await session_store.get_messages(db, session_id)
-            conversation_history = [
-                {"role": m.role, "content": m.content, "advisor_name": m.advisor_name or ""}
-                for m in history_msgs
-            ]
-            log.timing(f"loaded {len(conversation_history)} history messages")
+            if summary and last_seq is not None:
+                # Summary covers messages up to last_summarized_seq.
+                # Only load messages after it — avoids dumping 300 raw messages.
+                conversation_summary = summary
+                recent_msgs = [m for m in history_msgs if m.sequence > last_seq]
+                conversation_history = [
+                    {"role": m.role, "content": m.content, "advisor_name": m.advisor_name or ""}
+                    for m in recent_msgs
+                ]
+                log.timing(f"loaded summary + {len(conversation_history)} recent messages (last_summarized_seq={last_seq})")
+            else:
+                conversation_history = [
+                    {"role": m.role, "content": m.content, "advisor_name": m.advisor_name or ""}
+                    for m in history_msgs
+                ]
+                log.timing(f"loaded {len(conversation_history)} history messages")
 
         # Save user message
         t1 = time.perf_counter()
@@ -284,6 +298,7 @@ class CouncilService:
                     advisor_id, session_id, user_id, enhanced_question,
                     is_resume=is_resume,
                     history=conversation_history if is_resume else None,
+                    conversation_summary=conversation_summary,
                     on_token=lambda token, _name=advisor_name, _aid=advisor_id: queue.put(
                         AskEvent(advisor_id=_aid, advisor_name=_name, content=token, done=False)
                     ),
@@ -435,7 +450,10 @@ class CouncilService:
                             lc_messages.append(AIMessage(content=gm.content[:500]))
                     summary, _ = await context_manager.summarize_history(lc_messages, keep_last=10)
                     if summary:
-                        await session_store.update_summary(db, session_id, summary)
+                        # Track which messages the summary covers so we don't re-load them
+                        summarized_count = len(group_messages) - 10
+                        last_seq = group_messages[summarized_count - 1].sequence if summarized_count > 0 else None
+                        await session_store.update_summary(db, session_id, summary, last_summarized_seq=last_seq)
                 await user_memory_service.consolidate(db, user_id)
         except Exception as e:
             log.debug(f"background memory extraction failed: {e}")

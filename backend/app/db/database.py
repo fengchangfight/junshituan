@@ -55,6 +55,7 @@ async def init_db():
             "ALTER TABLE personas ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) DEFAULT 'public'",
             "ALTER TABLE personas ADD COLUMN IF NOT EXISTS creator_id VARCHAR REFERENCES users(id)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) DEFAULT 'user'",
+            "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_summarized_seq INTEGER",
         ]
         for stmt in pg_add_columns:
             await conn.execute(text(stmt))

@@ -190,14 +190,18 @@ class SessionStore:
         db: AsyncSession,
         session_id: str,
         summary: str,
+        last_summarized_seq: int = None,
     ):
+        values = {
+            "conversation_summary": summary,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if last_summarized_seq is not None:
+            values["last_summarized_seq"] = last_summarized_seq
         await db.execute(
             update(Session)
             .where(Session.id == session_id)
-            .values(
-                conversation_summary=summary,
-                updated_at=datetime.now(timezone.utc),
-            )
+            .values(**values)
         )
         await db.commit()
 
