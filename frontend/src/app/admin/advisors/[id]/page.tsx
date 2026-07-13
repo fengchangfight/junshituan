@@ -406,6 +406,29 @@ export default function AdvisorKBPage() {
     }
   };
 
+  const handleVisibility = async (visibility: string) => {
+    setPublishing(true);
+    setError(""); setSuccessMsg("");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/visibility`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ persona_id: personaId, visibility }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "操作失败");
+      setSuccessMsg(data.message || "操作成功");
+      fetchAdvisor();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const handleDeleteDoc = async (docId: string) => {
     await fetch(
       `${API_BASE}/api/admin/advisors/${personaId}/documents/${docId}`,
@@ -578,7 +601,14 @@ export default function AdvisorKBPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
         <div>
-          <h2 className="text-2xl font-display text-ink-100">{advisor.name}</h2>
+          <h2 className="text-2xl font-display text-ink-100">
+            {advisor.name}
+            {advisor.visibility === "private" && (
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-md bg-amber-900/30 border border-amber-700/40 text-amber-400 align-middle">
+                私密
+              </span>
+            )}
+          </h2>
           <p className="text-sm text-ink-500 mt-1">
             {advisor.era} · {advisor.title} · {advisor.category}
           </p>
@@ -627,6 +657,31 @@ export default function AdvisorKBPage() {
               >
                 <Send size={16} />
                 发布
+              </motion.button>
+            )
+          )}
+
+          {role === "super_admin" && (
+            advisor.visibility === "private" ? (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleVisibility("public")}
+                disabled={publishing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600/20 border border-purple-600/40 text-purple-400 text-sm font-medium hover:bg-purple-600/30 disabled:opacity-40"
+              >
+                <Sparkles size={16} />
+                推广为公开
+              </motion.button>
+            ) : (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleVisibility("private")}
+                disabled={publishing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600/20 border border-amber-600/40 text-amber-400 text-sm font-medium hover:bg-amber-600/30 disabled:opacity-40"
+              >
+                取消公开
               </motion.button>
             )
           )}

@@ -16,6 +16,7 @@ from app.models.schemas import (
     KnowledgeDocUpload,
     IngestRequest,
     PublishRequest,
+    VisibilityRequest,
     PersonaCreate,
     PersonaUpdate,
     SmartCreateRequest,
@@ -62,9 +63,9 @@ async def list_advisors(
     result_rows = await db.execute(select(PersonaDB))
     db_personas = result_rows.scalars().all()
 
-    # Filter for non-admin users: only show their own private advisors
+    # Filter for non-admin users: show all personas they created (any visibility)
     if not _is_admin(user):
-        db_personas = [p for p in db_personas if p.visibility == "private" and p.creator_id == user.id]
+        db_personas = [p for p in db_personas if p.creator_id == user.id]
 
     result = []
     for db_p in db_personas:
@@ -740,6 +741,55 @@ async def publish_advisor(
     await db.commit()
 
     return {"status": "published" if req.publish else "unpublished"}
+
+
+@router.post("/visibility")
+async def set_visibility(
+    req: VisibilityRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Promote/unpromote an advisor's visibility. Only super_admin can do this.
+
+    Promote (private → public): makes the advisor visible to all users.
+    Unpromote (public → private): hides the advisor, only creator/admin can see.
+
+    This is separate from publish — visibility controls who can discover the
+    advisor; publish controls whether it appears in the council for use.
+    """
+    if user.role != ROLE_SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="只有超级管理员可以更改军师可见性")
+
+    if req.visibility not in ("public", "private"):
+        raise HTTPException(status_code=400, detail="visibility 必须是 'public' 或 'private'")
+
+    result = await db.execute(
+        select(PersonaDB).where(PersonaDB.id == req.persona_id)
+    )
+    db_p = result.scalar_one_or_none()
+    if not db_p:
+        raise HTTPException(status_code=404, detail="军师不存在")
+
+    old_visibility = db_p.visibility or "public"
+    db_p.visibility = req.visibility
+
+    # NOTE: creator_id is preserved permanently — the original creator
+    # always retains access to see their persona regardless of visibility.
+
+    await db.commit()
+    await db.refresh(db_p)
+
+    # Update in-memory cache
+    engine = get_persona_engine()
+    engine.add_persona(Persona.from_db_row(db_p))
+
+    action = "已公开" if req.visibility == "public" else "已设为私密"
+    return {
+        "status": "ok",
+        "message": f"军师「{db_p.name}」{action}",
+        "visibility": db_p.visibility,
+        "previous": old_visibility,
+    }
 
 
 @router.delete("/{persona_id}/documents/{doc_id}")

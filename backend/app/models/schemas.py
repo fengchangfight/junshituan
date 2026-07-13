@@ -60,6 +60,11 @@ class PublishRequest(BaseModel):
     publish: bool = True
 
 
+class VisibilityRequest(BaseModel):
+    persona_id: str
+    visibility: str = "public"  # "public" | "private"
+
+
 class SmartCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=64)
 

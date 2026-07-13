@@ -35,7 +35,10 @@ async def list_advisors(
 
     visible = []
     for p in all_personas:
-        if p.visibility == "public" and p.is_published:
+        # Creator always sees their own, regardless of visibility/publish
+        if current_user and p.creator_id == current_user.id:
+            visible.append(p)
+        elif p.visibility == "public" and p.is_published:
             visible.append(p)
         elif p.visibility == "private" and current_user and p.creator_id == current_user.id:
             visible.append(p)
@@ -57,6 +60,9 @@ async def get_advisor(
     p = result.scalar_one_or_none()
     if not p:
         return None
+    # Creator always sees their own, regardless of visibility/publish
+    if current_user and p.creator_id == current_user.id:
+        return _to_dict(p)
     # Allow access to public published or user's own private
     if p.visibility == "public" and p.is_published:
         return _to_dict(p)
