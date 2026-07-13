@@ -48,6 +48,7 @@ interface AdvisorDetail {
   is_published: boolean;
   visibility: string;
   creator_id: string;
+  creator_name?: string;
   documents: Doc[];
   thinking_framework?: {
     analysis?: string;
@@ -612,6 +613,11 @@ export default function AdvisorKBPage() {
           <p className="text-sm text-ink-500 mt-1">
             {advisor.era} · {advisor.title} · {advisor.category}
           </p>
+          {advisor.creator_name && (
+            <p className="text-xs text-ink-600 mt-0.5">
+              创建者：{advisor.creator_name}
+            </p>
+          )}
           <p className="text-xs text-ink-600 mt-1 max-w-md">{advisor.short_bio}</p>
         </div>
         <div className="flex gap-2 shrink-0">

@@ -20,6 +20,7 @@ interface Advisor {
   is_published: boolean;
   visibility: string;
   creator_id: string;
+  creator_name?: string;
 }
 
 const CATEGORIES = ["军事家", "哲学家", "政治家", "文学家", "科学家", "企业家", "其他"];
@@ -458,6 +459,11 @@ export default function AdminAdvisorsPage() {
                   </span>
                   {adv.kb_doc_count > 0 && (
                     <span className="text-xs text-ink-600">{adv.kb_doc_count} 条索引</span>
+                  )}
+                  {adv.creator_name && (
+                    <span className="text-xs text-ink-600">
+                      {adv.creator_name}
+                    </span>
                   )}
                   {adv.visibility === "private" ? (
                     <span className="text-[10px] bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full">

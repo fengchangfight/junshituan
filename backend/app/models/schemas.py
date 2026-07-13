@@ -18,6 +18,7 @@ class AdvisorOut(BaseModel):
     is_published: bool = False
     visibility: str = "public"
     creator_id: Optional[str] = None
+    creator_name: Optional[str] = None
 
 
 class AdvisorAdminOut(AdvisorOut):

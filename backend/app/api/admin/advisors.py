@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select, update, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -60,7 +61,9 @@ async def list_advisors(
     user: User = Depends(require_user),
 ):
     """List advisors: admins see all, regular users see only their own private ones."""
-    result_rows = await db.execute(select(PersonaDB))
+    result_rows = await db.execute(
+        select(PersonaDB).options(selectinload(PersonaDB.creator))
+    )
     db_personas = result_rows.scalars().all()
 
     # Filter for non-admin users: show all personas they created (any visibility)
@@ -110,6 +113,7 @@ async def list_advisors(
                 is_published=db_p.is_published or False,
                 visibility=db_p.visibility or "public",
                 creator_id=db_p.creator_id,
+                creator_name=(db_p.creator.display_name or db_p.creator.username or db_p.creator_id) if db_p.creator else (db_p.creator_id or None),
                 documents=docs,
             )
         )
@@ -319,6 +323,13 @@ async def get_advisor(
     """Get a single advisor with full admin details. Users can only see their own."""
     db_p = await _get_editable_persona(persona_id, user, db)
 
+    # Load creator for display name
+    creator_name = None
+    if db_p.creator_id:
+        cr = await db.execute(select(User).where(User.id == db_p.creator_id))
+        creator_user = cr.scalar_one_or_none()
+        creator_name = (creator_user.display_name or creator_user.username or db_p.creator_id) if creator_user else (db_p.creator_id or None)
+
     docs_stmt = select(KnowledgeDocument).where(
         KnowledgeDocument.persona_id == persona_id
     )
@@ -359,6 +370,7 @@ async def get_advisor(
         is_published=db_p.is_published or False,
         visibility=db_p.visibility or "public",
         creator_id=db_p.creator_id,
+        creator_name=creator_name,
         documents=docs,
     )
 

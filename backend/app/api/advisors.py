@@ -21,6 +21,7 @@ def _to_dict(p: PersonaDB) -> dict:
         "style": p.style,
         "visibility": p.visibility or "public",
         "creator_id": p.creator_id,
+        "creator_name": (p.creator.display_name or p.creator.username or p.creator_id) if p.creator else (p.creator_id or None),
     }
 
 
