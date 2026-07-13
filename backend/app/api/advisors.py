@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload, defer, load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models.db_models import PersonaDB
+from app.models.db_models import PersonaDB, User
 from app.core.security import get_current_user
 from app.services.cache import cache
 from app.core.logging import get_logger
@@ -47,7 +47,7 @@ async def list_advisors(
         result = await db.execute(
             select(PersonaDB).options(
                 selectinload(PersonaDB.creator).options(
-                    load_only("id", "username", "display_name"),
+                    load_only(User.id, User.username, User.display_name),
                 ),
                 defer(PersonaDB.skill_config),
                 defer(PersonaDB.thinking_framework),
@@ -90,7 +90,7 @@ async def get_advisor(
     result = await db.execute(
         select(PersonaDB).where(PersonaDB.id == persona_id).options(
             selectinload(PersonaDB.creator).options(
-                load_only("id", "username", "display_name"),
+                load_only(User.id, User.username, User.display_name),
             ),
         )
     )

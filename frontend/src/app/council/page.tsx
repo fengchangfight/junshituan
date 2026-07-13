@@ -467,7 +467,7 @@ function CouncilChat() {
       } catch {}
       brandFooter.innerHTML =
         `<div style="text-align:right;">` +
-        `<div style="font-size:15px;font-weight:bold;color:#d4852c;letter-spacing:1px;margin-bottom:2px;">⚔️ 议事厅</div>` +
+        `<div style="font-size:15px;font-weight:bold;color:#d4852c;letter-spacing:1px;margin-bottom:2px;">⚔️ 军师团</div>` +
         `<div style="font-size:11px;color:#6b6b7b;margin-bottom:4px;">junshituan.com</div>` +
         `<div style="font-size:10px;color:#4a4a5a;">召集你的智者团</div>` +
         `</div>` +
