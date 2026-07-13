@@ -31,6 +31,7 @@ from app.core.security import (
 from app.services.ingestion.pipeline import pipeline as ingest_pipeline
 from app.services.agent.agent_registry import agent_registry
 from app.services.persona_engine import Persona, get_persona_engine
+from app.services.cache import cache
 
 router = APIRouter(prefix="/api/admin/advisors", tags=["admin-advisors"])
 
@@ -61,21 +62,26 @@ async def list_advisors(
     user: User = Depends(require_user),
 ):
     """List advisors: admins see all, regular users see only their own private ones."""
-    result_rows = await db.execute(
-        select(PersonaDB).options(
-            selectinload(PersonaDB.creator),
-            selectinload(PersonaDB.documents).options(
-                defer(KnowledgeDocument.content),   # skip full text in list view
-            ),
-            defer(PersonaDB.skill_config),          # skip large cognitive OS JSON
-            defer(PersonaDB.thinking_framework),
-            defer(PersonaDB.voice),
-            defer(PersonaDB.core_beliefs),
-            defer(PersonaDB.canonical_works),
-            defer(PersonaDB.knowledge_domain),
+    # ── Cache: skip DB on F5 refresh ──────────────────────────────────────
+    cache_key = "advisors:admin:raw"
+    db_personas = cache.get(cache_key)
+    if db_personas is None:
+        result_rows = await db.execute(
+            select(PersonaDB).options(
+                selectinload(PersonaDB.creator),
+                selectinload(PersonaDB.documents).options(
+                    defer(KnowledgeDocument.content),
+                ),
+                defer(PersonaDB.skill_config),
+                defer(PersonaDB.thinking_framework),
+                defer(PersonaDB.voice),
+                defer(PersonaDB.core_beliefs),
+                defer(PersonaDB.canonical_works),
+                defer(PersonaDB.knowledge_domain),
+            )
         )
-    )
-    db_personas = result_rows.scalars().all()
+        db_personas = result_rows.scalars().all()
+        cache.set(cache_key, db_personas, ttl=60.0)
 
     # Filter for non-admin users: show all personas they created (any visibility)
     if not _is_admin(user):
@@ -184,6 +190,8 @@ async def create_advisor(
     db.add(db_p)
     await db.commit()
     await db.refresh(db_p)
+
+    cache.invalidate("advisors:")
 
     engine = get_persona_engine()
     engine.add_persona(Persona.from_db_row(db_p))
@@ -296,6 +304,8 @@ async def smart_create(
     db.add(db_p)
     await db.commit()
     await db.refresh(db_p)
+
+    cache.invalidate("advisors:")
 
     engine = get_persona_engine()
     engine.add_persona(Persona.from_db_row(db_p))
@@ -424,6 +434,8 @@ async def update_advisor(
     await db.commit()
     await db.refresh(db_p)
 
+    cache.invalidate("advisors:")
+
     engine = get_persona_engine()
     engine.add_persona(Persona.from_db_row(db_p))
 
@@ -531,6 +543,7 @@ async def _upsert_document(
 
     await db.commit()
     await db.refresh(doc)
+    cache.invalidate("advisors:")
     return doc
 
 
@@ -696,6 +709,7 @@ async def ingest_knowledge(
 
     db_p.kb_status = "ingesting"
     await db.commit()
+    cache.invalidate("advisors:")
 
     try:
         texts = [d.content for d in all_docs]
@@ -713,6 +727,7 @@ async def ingest_knowledge(
             d.chunk_count = max(1, total_chunks // len(all_docs))
         agent_registry.remove(req.persona_id)
         await db.commit()
+        cache.invalidate("advisors:")
         return {"status": "ready", "chunks": total_chunks}
 
     except Exception as e:
@@ -723,6 +738,7 @@ async def ingest_knowledge(
             for d in all_docs:
                 d.status = "error"
             await db.commit()
+            cache.invalidate("advisors:")
         except Exception:
             traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"摄入失败: {e}")
@@ -758,6 +774,7 @@ async def publish_advisor(
     db_p.is_published = req.publish
     db_p.published_at = datetime.now(timezone.utc) if req.publish else None
     await db.commit()
+    cache.invalidate("advisors:")
 
     return {"status": "published" if req.publish else "unpublished"}
 
@@ -798,6 +815,8 @@ async def set_visibility(
     await db.commit()
     await db.refresh(db_p)
 
+    cache.invalidate("advisors:")
+
     # Update in-memory cache
     engine = get_persona_engine()
     engine.add_persona(Persona.from_db_row(db_p))
@@ -830,6 +849,7 @@ async def delete_document(
 
     await db.delete(doc)
     await db.commit()
+    cache.invalidate("advisors:")
     return {"status": "deleted"}
 
 
@@ -893,6 +913,8 @@ async def delete_advisor(
     # 5. Delete persona record
     await db.delete(db_p)
     await db.commit()
+
+    cache.invalidate("advisors:")
 
     return {
         "status": "deleted",
@@ -1059,6 +1081,8 @@ async def enrich_advisor(
     await db.commit()
     await db.refresh(db_p)
 
+    cache.invalidate("advisors:")
+
     engine = get_persona_engine()
     engine.add_persona(Persona.from_db_row(db_p))
 
@@ -1205,6 +1229,8 @@ async def generate_skill(
     db_p.skill_config = skill_data
     await db.commit()
     await db.refresh(db_p)
+
+    cache.invalidate("advisors:")
 
     # Update in-memory engine
     engine = get_skill_engine()

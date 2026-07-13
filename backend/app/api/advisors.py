@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.models.db_models import PersonaDB
 from app.core.security import get_current_user
+from app.services.cache import cache
 
 router = APIRouter(prefix="/api/advisors", tags=["advisors"])
 
@@ -32,18 +33,23 @@ async def list_advisors(
     current_user=Depends(get_current_user),
 ):
     """List advisors: public published + user's own private ones."""
-    result = await db.execute(
-        select(PersonaDB).options(
-            selectinload(PersonaDB.creator),
-            defer(PersonaDB.skill_config),
-            defer(PersonaDB.thinking_framework),
-            defer(PersonaDB.voice),
-            defer(PersonaDB.core_beliefs),
-            defer(PersonaDB.canonical_works),
-            defer(PersonaDB.knowledge_domain),
+    # ── Cache: skip DB on F5 refresh ──────────────────────────────────────
+    cache_key = "advisors:raw"
+    all_personas = cache.get(cache_key)
+    if all_personas is None:
+        result = await db.execute(
+            select(PersonaDB).options(
+                selectinload(PersonaDB.creator),
+                defer(PersonaDB.skill_config),
+                defer(PersonaDB.thinking_framework),
+                defer(PersonaDB.voice),
+                defer(PersonaDB.core_beliefs),
+                defer(PersonaDB.canonical_works),
+                defer(PersonaDB.knowledge_domain),
+            )
         )
-    )
-    all_personas = result.scalars().all()
+        all_personas = result.scalars().all()
+        cache.set(cache_key, all_personas, ttl=60.0)
 
     visible = []
     for p in all_personas:
