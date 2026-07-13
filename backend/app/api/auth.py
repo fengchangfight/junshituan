@@ -251,8 +251,15 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    # Delete user's sessions + memories first (FK NOT NULL constraints)
-    from app.models.db_models import Session as DBSession, UserMemory
+    # Detach user's personas (FK SET NULL not yet deployed on existing DBs)
+    from app.models.db_models import Session as DBSession, UserMemory, PersonaDB
+    persona_result = await db.execute(
+        select(PersonaDB).where(PersonaDB.creator_id == user_id)
+    )
+    for p in persona_result.scalars().all():
+        p.creator_id = None
+
+    # Delete user's sessions + memories (FK NOT NULL constraints)
     sessions_result = await db.execute(select(DBSession).where(DBSession.user_id == user_id))
     for s in sessions_result.scalars().all():
         await db.delete(s)
