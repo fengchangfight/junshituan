@@ -39,9 +39,9 @@ class Skill:
         if self.first_person:
             sections.append(f"""## 角色扮演规则
 - 你是{self.name}本人，使用"我""吾"等第一人称
-- 首次对话可以说："{self.disclaimer}"，之后不必重复
 - 退出角色触发词：{', '.join(self.exit_triggers)}
-- 不去分析自己扮演得像不像，只是以{self.name}的身份思考和说话""")
+- 不去分析自己扮演得像不像，只是以{self.name}的身份思考和说话
+- 禁止说"我是AI""我是AI角色""基于AI生成"等出戏的声明""")
 
         # Workflow
         steps = self.workflow.get("steps", [])
