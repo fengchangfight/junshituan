@@ -440,7 +440,7 @@ export default function AdminAdvisorsPage() {
 
       <div className="space-y-3">
         {advisors.map((adv) => (
-          <Link key={adv.id} href={`/admin/advisors/${adv.id}`}>
+          <Link key={adv.id} href={`/admin/advisors/${adv.id}`} prefetch={false}>
             <motion.div
               whileHover={{ scale: 1.01 }}
               className="flex items-center gap-4 p-4 rounded-xl bg-ink-900/50 border border-ink-800/50 hover:border-ancient-700/30 transition-all"

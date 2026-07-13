@@ -76,9 +76,6 @@ async def list_advisors(
         result_rows = await db.execute(
             select(PersonaDB).options(
                 selectinload(PersonaDB.creator),
-                selectinload(PersonaDB.documents).options(
-                    defer(KnowledgeDocument.content),
-                ),
                 defer(PersonaDB.skill_config),
                 defer(PersonaDB.thinking_framework),
                 defer(PersonaDB.voice),
@@ -97,21 +94,6 @@ async def list_advisors(
 
     result = []
     for db_p in db_personas:
-        docs = [
-            KnowledgeDocOut(
-                id=d.id,
-                filename=d.filename,
-                title=d.title,
-                content_type=d.content_type,
-                file_path=d.file_path or "",
-                chunk_count=d.chunk_count,
-                status=d.status,
-                created_at=d.created_at.isoformat() if d.created_at else "",
-                updated_at=d.updated_at.isoformat() if d.updated_at else "",
-            )
-            for d in db_p.documents
-        ]
-
         result.append(
             AdvisorAdminOut(
                 id=db_p.id,
@@ -135,7 +117,7 @@ async def list_advisors(
                 visibility=db_p.visibility or "public",
                 creator_id=db_p.creator_id,
                 creator_name=(db_p.creator.display_name or db_p.creator.username or db_p.creator_id) if db_p.creator else (db_p.creator_id or None),
-                documents=docs,
+                documents=[],                # not loaded for list — detail page has full docs
             )
         )
 
