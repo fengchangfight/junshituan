@@ -750,15 +750,6 @@ function CouncilChat() {
               >
                 {useWebSearch ? "🌐 联网" : "⚡ 快速"}
               </button>
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                title="导出长图"
-                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 transition-all"
-              >
-                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                导出
-              </button>
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
                 onClick={handleSend} disabled={!input.trim() || loading || !!hasStreaming}
                 className="w-11 h-11 rounded-full bg-gradient-to-br from-ancient-500 to-ancient-700 hover:from-ancient-400 hover:to-ancient-600 disabled:from-ink-700 disabled:to-ink-800 flex items-center justify-center shrink-0 transition-all shadow-lg shadow-ancient-600/20">
