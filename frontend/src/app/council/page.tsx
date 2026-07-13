@@ -436,17 +436,17 @@ function CouncilChat() {
         "position:fixed;left:-9999px;top:0;width:420px;background:#0f0f1a;padding:16px 12px 24px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;color:#d0cfd4;line-height:1.6;z-index:99999;";
       document.body.appendChild(container);
 
-      // Header
-      const header = document.createElement("div");
-      header.style.cssText = "text-align:center;padding:12px 0 16px;border-bottom:1px solid rgba(180,140,60,0.25);margin-bottom:16px;";
-      header.innerHTML = `<div style="font-size:20px;color:#d4852c;letter-spacing:2px;margin-bottom:4px;">⚔️ ${groupName}</div><div style="font-size:11px;color:#6b6b7b;">${messages.filter(m => !m.isStreaming).length} 条消息</div>`;
-      container.appendChild(header);
-
-      // ── Top branding ──────────────────────────────────────────────
+      // ── Top branding (above title, very top of image) ─────────────
       const brandTop = document.createElement("div");
-      brandTop.style.cssText = "border-bottom:1px solid rgba(180,140,60,0.15);margin-bottom:16px;";
+      brandTop.style.cssText = "padding-bottom:12px;border-bottom:1px solid rgba(180,140,60,0.15);margin-bottom:16px;";
       brandTop.innerHTML = brandHTML;
       container.appendChild(brandTop);
+
+      // Header
+      const header = document.createElement("div");
+      header.style.cssText = "text-align:center;padding:8px 0 16px;border-bottom:1px solid rgba(180,140,60,0.25);margin-bottom:16px;";
+      header.innerHTML = `<div style="font-size:20px;color:#d4852c;letter-spacing:2px;margin-bottom:4px;">⚔️ ${groupName}</div><div style="font-size:11px;color:#6b6b7b;">${messages.filter(m => !m.isStreaming).length} 条消息</div>`;
+      container.appendChild(header);
 
       // Messages
       const msgContainer = document.createElement("div");
