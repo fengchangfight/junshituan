@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -31,7 +32,9 @@ async def list_advisors(
     current_user=Depends(get_current_user),
 ):
     """List advisors: public published + user's own private ones."""
-    result = await db.execute(select(PersonaDB))
+    result = await db.execute(
+        select(PersonaDB).options(selectinload(PersonaDB.creator))
+    )
     all_personas = result.scalars().all()
 
     visible = []
@@ -57,7 +60,9 @@ async def get_advisor(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    result = await db.execute(select(PersonaDB).where(PersonaDB.id == persona_id))
+    result = await db.execute(
+        select(PersonaDB).where(PersonaDB.id == persona_id).options(selectinload(PersonaDB.creator))
+    )
     p = result.scalar_one_or_none()
     if not p:
         return None
