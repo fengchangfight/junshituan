@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
-import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download, Camera } from "lucide-react";
+import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download } from "lucide-react";
 import html2canvas from "html2canvas";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
 import Avatar from "@/components/ChatRoom/Avatar";
@@ -407,11 +407,31 @@ function CouncilChat() {
       }
       container.appendChild(msgContainer);
 
-      // Footer
-      const footer = document.createElement("div");
-      footer.style.cssText = "text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:#4a4a5a;";
-      footer.textContent = "由 议事厅 导出 · 长按图片分享";
-      container.appendChild(footer);
+      // Branding footer with QR code
+      const brandFooter = document.createElement("div");
+      brandFooter.style.cssText = "margin-top:20px;padding-top:16px;border-top:1px solid rgba(180,140,60,0.2);display:flex;align-items:center;justify-content:center;gap:16px;";
+      // Load QR code as data URI (bypass CORS issues with html2canvas)
+      let qrDataUrl = "";
+      try {
+        const qrBlob = await fetch(
+          "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://www.junshituan.com&margin=6&color=07c160&bgcolor=0f0f1a"
+        ).then(r => r.blob());
+        qrDataUrl = await new Promise<string>(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(qrBlob);
+        });
+      } catch {}
+      brandFooter.innerHTML =
+        `<div style="text-align:right;">` +
+        `<div style="font-size:15px;font-weight:bold;color:#d4852c;letter-spacing:1px;margin-bottom:2px;">⚔️ 议事厅</div>` +
+        `<div style="font-size:11px;color:#6b6b7b;margin-bottom:4px;">junshituan.com</div>` +
+        `<div style="font-size:10px;color:#4a4a5a;">召集你的智者团</div>` +
+        `</div>` +
+        (qrDataUrl
+          ? `<img src="${qrDataUrl}" style="width:80px;height:80px;border-radius:8px;border:2px solid rgba(7,193,96,0.3);" />`
+          : `<div style="width:80px;height:80px;border-radius:8px;border:2px dashed rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;color:#4a4a5a;">扫码访问</div>`);
+      container.appendChild(brandFooter);
 
       // Render to canvas
       const canvas = await html2canvas(container, {
@@ -469,7 +489,7 @@ function CouncilChat() {
   return (
     <div className="flex flex-col h-[100dvh] bg-ink-950">
       {/* ── Top bar ── */}
-      <div className="shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
+      <div className="sticky top-0 z-30 shrink-0 bg-ink-900/95 backdrop-blur-md border-b border-ink-800/60 px-3 py-2">
         <div className="flex items-center gap-2">
           <a href="/" className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-ink-800/50 transition-colors shrink-0"><ArrowLeft size={20} className="text-ink-300" /></a>
           <div className="flex-1 min-w-0">
@@ -500,16 +520,17 @@ function CouncilChat() {
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors text-ink-400 hover:bg-ink-800/50 hover:text-ink-200 shrink-0 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 transition-all shrink-0"
             title="导出长图"
           >
-            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            导出
           </button>
         </div>
       </div>
 
       {/* ── Mobile advisor strip ── */}
-      <div className="md:hidden shrink-0 bg-ink-900/80 border-b border-ink-800/50 px-2 py-1.5">
+      <div className="md:hidden sticky top-[53px] z-30 shrink-0 bg-ink-900/80 border-b border-ink-800/50 px-2 py-1.5">
         <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => setShowSidebar(true)}
@@ -696,9 +717,10 @@ function CouncilChat() {
                 onClick={handleExport}
                 disabled={exporting}
                 title="导出长图"
-                className="shrink-0 w-9 h-9 rounded-full bg-ink-800 border border-ink-700/40 flex items-center justify-center text-ink-400 hover:text-ink-200 hover:border-ink-500 hover:bg-ink-700 transition-colors disabled:opacity-50"
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 transition-all"
               >
-                {exporting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                导出
               </button>
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
                 onClick={handleSend} disabled={!input.trim() || loading || !!hasStreaming}
