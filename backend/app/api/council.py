@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.models.db_models import User, PersonaDB
 from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest, RenameSessionRequest
-from app.core.security import require_user
+from app.core.security import require_user, get_current_user
 from app.services.council_service import council_service
 from app.services.persona_engine import get_persona_engine
 from sqlalchemy import select
@@ -110,13 +110,34 @@ async def get_session_detail(
 async def export_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_user),
+    user: User = Depends(get_current_user),
+    token: str = None,
 ):
     """Export session as a self-contained HTML page for sharing.
 
     Designed for mobile-width viewing (~420px) so it renders well in
     WeChat's built-in browser and is screenshot-friendly.
+
+    Accepts optional ?token= query param for direct URL access (WeChat
+    can't send auth headers).
     """
+    # If token provided via query param, use it to authenticate
+    if token and not user:
+        from app.core.security import decode_token
+        from app.models.db_models import User as U
+        from sqlalchemy import select as sa_select
+        try:
+            payload = decode_token(token)
+            uid = payload.get("sub")
+            if uid:
+                r = await db.execute(sa_select(U).where(U.id == uid))
+                user = r.scalar_one_or_none()
+        except Exception:
+            user = None
+
+    if not user:
+        raise HTTPException(status_code=401, detail="请先登录")
+
     detail = await council_service.get_session_detail(db, session_id, user.id)
     if not detail:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -269,11 +290,75 @@ async def export_session(
     font-size: 10px;
     color: #4a4a5a;
   }}
+  .share-bar {{
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 0;
+  }}
+  .share-btn {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border-radius: 24px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    background: linear-gradient(135deg, #07c160, #06ad56);
+    box-shadow: 0 2px 8px rgba(7,193,96,0.3);
+    transition: transform 0.15s;
+  }}
+  .share-btn:active {{ transform: scale(0.96); }}
+  .share-hint {{
+    text-align: center;
+    font-size: 11px;
+    color: #6b6b7b;
+    margin-top: 8px;
+    display: none;
+  }}
   @media (max-width: 420px) {{
     body {{ padding: 12px 8px 24px; }}
     .bubble {{ font-size: 13px; padding: 8px 12px; }}
   }}
 </style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {{
+  var shareBtn = document.getElementById('shareBtn');
+  var shareBtn2 = document.getElementById('shareBtn2');
+  var hint = document.getElementById('shareHint');
+
+  function doShare() {{
+    if (navigator.share) {{
+      navigator.share({{
+        title: '{title}',
+        text: '议事厅对话：{title}',
+        url: window.location.href,
+      }}).catch(function() {{}});
+    }} else {{
+      // Fallback: copy URL + instruct user
+      var input = document.createElement('textarea');
+      input.value = window.location.href;
+      document.body.appendChild(input);
+      input.select();
+      try {{ document.execCommand('copy'); hint.style.display = 'block'; hint.textContent = '链接已复制！请粘贴到微信发送给朋友'; }}
+      catch(e) {{ hint.style.display = 'block'; hint.textContent = '请截图后分享到微信'; }}
+      document.body.removeChild(input);
+    }}
+  }}
+
+  if (shareBtn) shareBtn.onclick = doShare;
+  if (shareBtn2) shareBtn2.onclick = doShare;
+
+  // Show fallback hint if Web Share API not available
+  if (!navigator.share) {{
+    if (hint) hint.style.display = 'block';
+    if (hint) hint.textContent = '点击上方按钮复制链接，粘贴到微信发送给朋友';
+  }}
+}});
+</script>
 </head>
 <body>
 <div class="header">
@@ -281,9 +366,18 @@ async def export_session(
   <div class="meta">{len(messages)} 条消息</div>
 </div>
 
+<div class="share-bar">
+  <button class="share-btn" id="shareBtn">📤 分享到微信</button>
+</div>
+
 <div class="messages">
 {chr(10).join(message_html_parts)}
 </div>
+
+<div class="share-bar">
+  <button class="share-btn" id="shareBtn2">📤 分享到微信</button>
+</div>
+<div class="share-hint" id="shareHint">点击上方按钮复制链接，粘贴到微信发送给朋友</div>
 
 <div class="footer">
   由 议事厅 导出

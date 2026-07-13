@@ -361,20 +361,11 @@ function CouncilChat() {
 
   const groupName = title || advisors.map((a) => a.name).join("、") + "的议事厅";
 
-  const handleExport = useCallback(async () => {
-    try {
-      const token = localStorage.getItem("junshituan_token");
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/api/council/sessions/${sessionId}/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("导出失败");
-      const html = await res.text();
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-    } catch (e) {
-      console.error("Export failed:", e);
-    }
+  const handleExport = useCallback(() => {
+    const token = localStorage.getItem("junshituan_token");
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const url = `${baseUrl}/api/council/sessions/${sessionId}/export?token=${encodeURIComponent(token || "")}`;
+    window.open(url, "_blank");
   }, [sessionId]);
 
   const handleInviteAdvisors = useCallback(async (ids: string[]) => {
@@ -629,6 +620,13 @@ function CouncilChat() {
                 }`}
               >
                 {useWebSearch ? "🌐 联网" : "⚡ 快速"}
+              </button>
+              <button
+                onClick={handleExport}
+                title="导出会话"
+                className="shrink-0 w-9 h-9 rounded-full bg-ink-800 border border-ink-700/40 flex items-center justify-center text-ink-400 hover:text-ink-200 hover:border-ink-500 hover:bg-ink-700 transition-colors"
+              >
+                <Download size={16} />
               </button>
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
                 onClick={handleSend} disabled={!input.trim() || loading || !!hasStreaming}
