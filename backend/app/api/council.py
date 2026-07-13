@@ -1,13 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models.db_models import User
+from app.models.db_models import User, PersonaDB
 from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest, RenameSessionRequest
 from app.core.security import require_user
 from app.services.council_service import council_service
+from app.services.memory.session_store import session_store
 from app.services.persona_engine import get_persona_engine
+from sqlalchemy import select
 
 router = APIRouter(prefix="/api/council", tags=["council"])
 
@@ -104,7 +107,192 @@ async def get_session_detail(
     return detail
 
 
-@router.post("/sessions/{session_id}/ask")
+@router.get("/sessions/{session_id}/export", response_class=HTMLResponse)
+async def export_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Export session as a self-contained HTML page for sharing.
+
+    Designed for mobile-width viewing (~420px) so it renders well in
+    WeChat's built-in browser and is screenshot-friendly.
+    """
+    detail = await council_service.get_session_detail(db, session_id, user.id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    # Load advisor avatars
+    advisor_ids = detail.get("advisor_ids") or []
+    avatars: dict[str, str] = {}
+    if advisor_ids:
+        result = await db.execute(
+            select(PersonaDB.id, PersonaDB.avatar, PersonaDB.name).where(
+                PersonaDB.id.in_(advisor_ids)
+            )
+        )
+        for row in result:
+            avatars[row[0]] = row[1] or ""
+
+    messages = detail.get("messages") or []
+    title = detail.get("title") or "议事厅"
+
+    # ── Build HTML ──────────────────────────────────────────────────────
+    message_html_parts = []
+    for m in messages:
+        role = m.get("role", "")
+        content = m.get("content", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        advisor_id = m.get("advisor_id") or ""
+        advisor_name = m.get("advisor_name") or ""
+        avatar_url = avatars.get(advisor_id, "")
+
+        if role == "user":
+            message_html_parts.append(f"""\
+    <div class="msg msg-user">
+      <div class="bubble bubble-user">{content}</div>
+    </div>""")
+        elif role == "system":
+            message_html_parts.append(f"""\
+    <div class="msg msg-system">
+      <span>{content}</span>
+    </div>""")
+        else:
+            avatar_html = ""
+            if avatar_url:
+                avatar_html = f'<img src="{avatar_url}" class="avatar" alt="{advisor_name}" onerror="this.style.display=\'none\'">'
+            else:
+                initial = advisor_name[0] if advisor_name else "?"
+                avatar_html = f'<div class="avatar avatar-fallback">{initial}</div>'
+
+            message_html_parts.append(f"""\
+    <div class="msg msg-advisor">
+      {avatar_html}
+      <div class="msg-body">
+        <div class="advisor-name">{advisor_name}</div>
+        <div class="bubble bubble-advisor">{content}</div>
+      </div>
+    </div>""")
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #0f0f1a;
+    color: #d0cfd4;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 16px 12px 32px;
+    line-height: 1.6;
+  }}
+  .header {{
+    text-align: center;
+    padding: 20px 0 16px;
+    border-bottom: 1px solid rgba(180,140,60,0.25);
+    margin-bottom: 16px;
+  }}
+  .header h1 {{
+    font-size: 20px;
+    color: #d4852c;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }}
+  .header .meta {{
+    font-size: 11px;
+    color: #6b6b7b;
+    margin-top: 4px;
+  }}
+  .msg {{ margin-bottom: 8px; }}
+  .msg-user {{ display: flex; justify-content: flex-end; }}
+  .msg-system {{ display: flex; justify-content: center; padding: 8px 0; }}
+  .msg-system span {{
+    font-size: 11px;
+    color: #6b6b7b;
+    background: rgba(255,255,255,0.04);
+    padding: 4px 12px;
+    border-radius: 12px;
+  }}
+  .msg-advisor {{ display: flex; gap: 8px; align-items: flex-start; }}
+  .bubble {{
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }}
+  .bubble-user {{
+    background: linear-gradient(135deg, #b86b2a, #d4852c);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }}
+  .bubble-advisor {{
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-top-left-radius: 4px;
+  }}
+  .avatar {{
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }}
+  .avatar-fallback {{
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2a2a3e, #3a3a4e);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: bold;
+    color: #d0cfd4;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }}
+  .msg-body {{ min-width: 0; }}
+  .advisor-name {{
+    font-size: 11px;
+    font-weight: 600;
+    color: #90909e;
+    margin-bottom: 3px;
+    margin-left: 2px;
+  }}
+  .footer {{
+    text-align: center;
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 10px;
+    color: #4a4a5a;
+  }}
+  @media (max-width: 420px) {{
+    body {{ padding: 12px 8px 24px; }}
+    .bubble {{ font-size: 13px; padding: 8px 12px; }}
+  }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>⚔️ {title}</h1>
+  <div class="meta">{len(messages)} 条消息</div>
+</div>
+
+<div class="messages">
+{chr(10).join(message_html_parts)}
+</div>
+
+<div class="footer">
+  由 议事厅 导出
+</div>
+</body>
+</html>"""
+
+    return HTMLResponse(content=html, status_code=200)
 async def ask_council(
     session_id: str,
     req: AskRequest,

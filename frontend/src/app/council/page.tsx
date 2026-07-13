@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
-import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle } from "lucide-react";
+import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download } from "lucide-react";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
 import Avatar from "@/components/ChatRoom/Avatar";
 
@@ -361,6 +361,22 @@ function CouncilChat() {
 
   const groupName = title || advisors.map((a) => a.name).join("、") + "的议事厅";
 
+  const handleExport = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("junshituan_token");
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/api/council/sessions/${sessionId}/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("导出失败");
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (e) {
+      console.error("Export failed:", e);
+    }
+  }, [sessionId]);
+
   const handleInviteAdvisors = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
     setInviting(true);
@@ -419,6 +435,13 @@ function CouncilChat() {
             {toolActivities.some((a) => a.status === "running") && (
               <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-400 rounded-full animate-pulse" />
             )}
+          </button>
+          <button
+            onClick={handleExport}
+            className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors text-ink-400 hover:bg-ink-800/50 hover:text-ink-200 shrink-0"
+            title="导出会话"
+          >
+            <Download size={16} />
           </button>
         </div>
       </div>

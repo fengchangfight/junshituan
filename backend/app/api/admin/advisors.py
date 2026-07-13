@@ -1,6 +1,7 @@
 """Admin API: Knowledge base management for advisors."""
 
 import os
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -63,9 +64,11 @@ async def list_advisors(
 ):
     """List advisors: admins see all, regular users see only their own private ones."""
     # ── Cache: skip DB on F5 refresh ──────────────────────────────────────
+    t0 = time.time()
     cache_key = "advisors:admin:raw"
     db_personas = cache.get(cache_key)
     if db_personas is None:
+        t_query = time.time()
         result_rows = await db.execute(
             select(PersonaDB).options(
                 selectinload(PersonaDB.creator),
@@ -82,6 +85,7 @@ async def list_advisors(
         )
         db_personas = result_rows.scalars().all()
         cache.set(cache_key, db_personas, ttl=60.0)
+        log.info(f"list_advisors DB query took {(time.time() - t_query)*1000:.0f}ms, {len(db_personas)} personas")
 
     # Filter for non-admin users: show all personas they created (any visibility)
     if not _is_admin(user):
@@ -131,6 +135,8 @@ async def list_advisors(
             )
         )
 
+    elapsed = (time.time() - t0) * 1000
+    log.info(f"list_advisors DONE {len(result)} personas in {elapsed:.0f}ms")
     return result
 
 
