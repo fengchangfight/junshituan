@@ -193,12 +193,19 @@ async def export_session(
       </div>
     </div>""")
 
+    # Escape title for HTML attribute safety
+    safe_title = title.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
+<meta property="og:title" content="{safe_title}">
+<meta property="og:description" content="共 {len(messages)} 条对话记录">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="议事厅">
 <style>
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
@@ -291,10 +298,37 @@ async def export_session(
     color: #4a4a5a;
   }}
   .share-bar {{
-    display: flex;
-    justify-content: center;
-    gap: 8px;
     margin: 12px 0;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+  }}
+  .share-wechat {{
+    display: none;
+    text-align: center;
+  }}
+  .share-wechat .arrow-hint {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: rgba(7,193,96,0.15);
+    border: 1px solid rgba(7,193,96,0.3);
+    color: #07c160;
+    font-size: 13px;
+    font-weight: 600;
+  }}
+  .share-wechat .detail {{
+    font-size: 11px;
+    color: #6b6b7b;
+    margin-top: 6px;
+    line-height: 1.6;
+  }}
+  .share-normal {{
+    display: none;
+    text-align: center;
   }}
   .share-btn {{
     display: inline-flex;
@@ -317,7 +351,6 @@ async def export_session(
     font-size: 11px;
     color: #6b6b7b;
     margin-top: 8px;
-    display: none;
   }}
   @media (max-width: 420px) {{
     body {{ padding: 12px 8px 24px; }}
@@ -325,39 +358,51 @@ async def export_session(
   }}
 </style>
 <script>
-document.addEventListener('DOMContentLoaded', function() {{
-  var shareBtn = document.getElementById('shareBtn');
-  var shareBtn2 = document.getElementById('shareBtn2');
-  var hint = document.getElementById('shareHint');
+(function() {{
+  var ua = navigator.userAgent || '';
+  var isWeChat = /MicroMessenger/i.test(ua);
 
-  function doShare() {{
-    if (navigator.share) {{
-      navigator.share({{
-        title: '{title}',
-        text: '议事厅对话：{title}',
-        url: window.location.href,
-      }}).catch(function() {{}});
+  function show(el) {{ if (el) el.style.display = 'block'; }}
+  function copyUrl() {{
+    var ta = document.createElement('textarea');
+    ta.value = window.location.href;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {{ document.execCommand('copy'); }}
+    catch(e) {{}}
+    document.body.removeChild(ta);
+  }}
+
+  document.addEventListener('DOMContentLoaded', function() {{
+    if (isWeChat) {{
+      // WeChat browser: only way is the 3-dot menu
+      show(document.getElementById('shareWxTop'));
+      show(document.getElementById('shareWxBottom'));
     }} else {{
-      // Fallback: copy URL + instruct user
-      var input = document.createElement('textarea');
-      input.value = window.location.href;
-      document.body.appendChild(input);
-      input.select();
-      try {{ document.execCommand('copy'); hint.style.display = 'block'; hint.textContent = '链接已复制！请粘贴到微信发送给朋友'; }}
-      catch(e) {{ hint.style.display = 'block'; hint.textContent = '请截图后分享到微信'; }}
-      document.body.removeChild(input);
+      // Regular browser: try Web Share API, fallback to copy
+      show(document.getElementById('shareNormalTop'));
+      show(document.getElementById('shareNormalBottom'));
+      var fn = function() {{
+        if (navigator.share) {{
+          navigator.share({{
+            title: '{safe_title}',
+            text: '议事厅对话：{safe_title}',
+            url: window.location.href,
+          }}).catch(function(){{}});
+        }} else {{
+          copyUrl();
+          var h = document.getElementById('shareHint');
+          if (h) {{ h.style.display = 'block'; h.textContent = '链接已复制，可粘贴到微信发送给朋友'; }}
+        }}
+      }};
+      var b1 = document.getElementById('shareBtn');
+      var b2 = document.getElementById('shareBtn2');
+      if (b1) b1.onclick = fn;
+      if (b2) b2.onclick = fn;
     }}
-  }}
-
-  if (shareBtn) shareBtn.onclick = doShare;
-  if (shareBtn2) shareBtn2.onclick = doShare;
-
-  // Show fallback hint if Web Share API not available
-  if (!navigator.share) {{
-    if (hint) hint.style.display = 'block';
-    if (hint) hint.textContent = '点击上方按钮复制链接，粘贴到微信发送给朋友';
-  }}
-}});
+  }});
+}})();
 </script>
 </head>
 <body>
@@ -366,18 +411,35 @@ document.addEventListener('DOMContentLoaded', function() {{
   <div class="meta">{len(messages)} 条消息</div>
 </div>
 
-<div class="share-bar">
-  <button class="share-btn" id="shareBtn">📤 分享到微信</button>
+<div class="share-bar" id="shareWxTop">
+  <div class="share-wechat">
+    <div class="arrow-hint">📤 点击右上角 <b>···</b> → 分享给朋友</div>
+    <div class="detail">微信内分享需通过右上角菜单。<br>发送给朋友或分享到朋友圈后，对方点击链接即可查看。</div>
+  </div>
+</div>
+
+<div class="share-bar" id="shareNormalTop">
+  <div class="share-normal">
+    <button class="share-btn" id="shareBtn">📤 分享 / 复制链接</button>
+  </div>
 </div>
 
 <div class="messages">
 {chr(10).join(message_html_parts)}
 </div>
 
-<div class="share-bar">
-  <button class="share-btn" id="shareBtn2">📤 分享到微信</button>
+<div class="share-bar" id="shareNormalBottom">
+  <div class="share-normal">
+    <button class="share-btn" id="shareBtn2">📤 分享 / 复制链接</button>
+  </div>
 </div>
-<div class="share-hint" id="shareHint">点击上方按钮复制链接，粘贴到微信发送给朋友</div>
+<div class="share-bar" id="shareWxBottom">
+  <div class="share-wechat">
+    <div class="arrow-hint">📤 点击右上角 <b>···</b> → 分享给朋友</div>
+  </div>
+</div>
+
+<div class="share-hint" id="shareHint" style="display:none">链接已复制，可粘贴到微信发送给朋友</div>
 
 <div class="footer">
   由 议事厅 导出

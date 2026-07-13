@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
 import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession } from "@/lib/api";
-import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download } from "lucide-react";
+import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download, Camera } from "lucide-react";
+import html2canvas from "html2canvas";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
 import Avatar from "@/components/ChatRoom/Avatar";
 
@@ -361,12 +362,84 @@ function CouncilChat() {
 
   const groupName = title || advisors.map((a) => a.name).join("、") + "的议事厅";
 
-  const handleExport = useCallback(() => {
-    const token = localStorage.getItem("junshituan_token");
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-    const url = `${baseUrl}/api/council/sessions/${sessionId}/export?token=${encodeURIComponent(token || "")}`;
-    window.open(url, "_blank");
-  }, [sessionId]);
+  const [exporting, setExporting] = useState(false);
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      // Build a clean capture DOM — mobile-width, chat-style, no UI chrome
+      const container = document.createElement("div");
+      container.style.cssText =
+        "position:fixed;left:-9999px;top:0;width:420px;background:#0f0f1a;padding:16px 12px 24px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;color:#d0cfd4;line-height:1.6;z-index:99999;";
+      document.body.appendChild(container);
+
+      // Header
+      const header = document.createElement("div");
+      header.style.cssText = "text-align:center;padding:12px 0 16px;border-bottom:1px solid rgba(180,140,60,0.25);margin-bottom:16px;";
+      header.innerHTML = `<div style="font-size:20px;color:#d4852c;letter-spacing:2px;margin-bottom:4px;">⚔️ ${groupName}</div><div style="font-size:11px;color:#6b6b7b;">${messages.filter(m => !m.isStreaming).length} 条消息</div>`;
+      container.appendChild(header);
+
+      // Messages
+      const msgContainer = document.createElement("div");
+      for (const m of messages) {
+        if (m.isStreaming) continue;
+        if (m.role === "system") {
+          const el = document.createElement("div");
+          el.style.cssText = "display:flex;justify-content:center;padding:6px 0;margin-bottom:6px;";
+          el.innerHTML = `<span style="font-size:11px;color:#6b6b7b;background:rgba(255,255,255,0.04);padding:4px 12px;border-radius:12px;">${m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</span>`;
+          msgContainer.appendChild(el);
+        } else if (m.role === "user") {
+          const el = document.createElement("div");
+          el.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:8px;";
+          el.innerHTML = `<div style="max-width:80%;padding:10px 14px;border-radius:16px;border-bottom-right-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:linear-gradient(135deg,#b86b2a,#d4852c);color:#fff;">${m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>`;
+          msgContainer.appendChild(el);
+        } else {
+          const adv = advisors.find(a => a.id === m.advisorId);
+          const avatarHtml = adv?.avatar
+            ? `<img src="${adv.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'" />`
+            : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2a2a3e,#3a3a4e);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;color:#d0cfd4;flex-shrink:0;">${(m.advisorName || "?")[0]}</div>`;
+          const el = document.createElement("div");
+          el.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;";
+          el.innerHTML = `${avatarHtml}<div style="min-width:0;"><div style="font-size:11px;font-weight:600;color:#90909e;margin-bottom:3px;">${m.advisorName || ""}</div><div style="max-width:100%;padding:10px 14px;border-radius:16px;border-top-left-radius:4px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);">${m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div></div>`;
+          msgContainer.appendChild(el);
+        }
+      }
+      container.appendChild(msgContainer);
+
+      // Footer
+      const footer = document.createElement("div");
+      footer.style.cssText = "text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:#4a4a5a;";
+      footer.textContent = "由 议事厅 导出";
+      container.appendChild(footer);
+
+      // Render to canvas
+      const canvas = await html2canvas(container, {
+        backgroundColor: "#0f0f1a",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+
+      // Clean up
+      document.body.removeChild(container);
+
+      // Download
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${groupName}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error("Export failed:", e);
+    } finally {
+      setExporting(false);
+    }
+  }, [groupName, messages, advisors]);
 
   const handleInviteAdvisors = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
@@ -429,10 +502,11 @@ function CouncilChat() {
           </button>
           <button
             onClick={handleExport}
-            className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors text-ink-400 hover:bg-ink-800/50 hover:text-ink-200 shrink-0"
-            title="导出会话"
+            disabled={exporting}
+            className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors text-ink-400 hover:bg-ink-800/50 hover:text-ink-200 shrink-0 disabled:opacity-50"
+            title="导出长图"
           >
-            <Download size={16} />
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
           </button>
         </div>
       </div>
@@ -623,10 +697,11 @@ function CouncilChat() {
               </button>
               <button
                 onClick={handleExport}
-                title="导出会话"
-                className="shrink-0 w-9 h-9 rounded-full bg-ink-800 border border-ink-700/40 flex items-center justify-center text-ink-400 hover:text-ink-200 hover:border-ink-500 hover:bg-ink-700 transition-colors"
+                disabled={exporting}
+                title="导出长图"
+                className="shrink-0 w-9 h-9 rounded-full bg-ink-800 border border-ink-700/40 flex items-center justify-center text-ink-400 hover:text-ink-200 hover:border-ink-500 hover:bg-ink-700 transition-colors disabled:opacity-50"
               >
-                <Download size={16} />
+                {exporting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
               </button>
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
                 onClick={handleSend} disabled={!input.trim() || loading || !!hasStreaming}
