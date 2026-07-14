@@ -248,6 +248,44 @@ export default function AdvisorKBPage() {
     reader.readAsDataURL(file);
   };
 
+  const uploadAvatarNow = async (dataUri: string) => {
+    setError(""); setSuccessMsg("");
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/advisors/${personaId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ avatar: dataUri }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "上传失败"); }
+      setSuccessMsg("头像已更新");
+      fetchAdvisor();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const handleAvatarQuickUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 128;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
+        else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        w = Math.round(w); h = Math.round(h);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+        const dataUri = canvas.toDataURL("image/jpeg", 0.75);
+        setMetaForm((prev) => ({ ...prev, avatar: dataUri }));
+        uploadAvatarNow(dataUri);
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const validateFilename = (name: string): boolean => {
     const ext = name.split(".").pop()?.toLowerCase() || "";
     return ext === "md" || ext === "txt" || ext === "markdown";
@@ -709,18 +747,24 @@ export default function AdvisorKBPage() {
       <div className="mb-6 p-4 rounded-xl bg-ink-900/40 border border-ink-800/40">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            {metaForm.avatar ? (
-              <img
-                src={metaForm.avatar}
-                alt="avatar"
-                className="w-10 h-10 rounded-full object-cover bg-ink-800"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-sm font-bold text-ink-200">
-                {advisor.name[0]}
+            <label className="cursor-pointer relative group shrink-0">
+              <input type="file" accept="image/*" onChange={handleAvatarQuickUpload} className="hidden" />
+              {metaForm.avatar ? (
+                <img
+                  src={metaForm.avatar}
+                  alt="avatar"
+                  className="w-10 h-10 rounded-full object-cover bg-ink-800"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-sm font-bold text-ink-200">
+                  {advisor.name[0]}
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-white text-[10px] font-medium">换</span>
               </div>
-            )}
+            </label>
             <div>
               <h4 className="text-sm font-bold text-ink-200">{advisor.name}</h4>
               <p className="text-xs text-ink-500">军师信息</p>
@@ -787,37 +831,25 @@ export default function AdvisorKBPage() {
             <div>
               <label className="block text-xs text-ink-400 mb-1">头像</label>
               <div className="flex items-center gap-3">
-                {metaForm.avatar ? (
-                  <img
-                    src={metaForm.avatar}
-                    alt="avatar"
-                    className="w-12 h-12 rounded-full object-cover bg-ink-800 border border-ink-700"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-lg font-bold text-ink-200 border border-ink-700">
-                    {metaForm.name[0] || "?"}
-                  </div>
-                )}
-                <label className="flex-1 cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAvatarFile}
-                    className="hidden"
-                  />
-                  <div className="bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-xs text-ink-400 hover:text-ink-200 hover:border-ink-600 transition-colors text-center">
-                    点击上传（自动压缩）
+                <label className="cursor-pointer relative group shrink-0">
+                  <input type="file" accept="image/*" onChange={handleAvatarQuickUpload} className="hidden" />
+                  {metaForm.avatar ? (
+                    <img
+                      src={metaForm.avatar}
+                      alt="avatar"
+                      className="w-12 h-12 rounded-full object-cover bg-ink-800 border border-ink-700"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-ink-800 to-ink-700 flex items-center justify-center text-lg font-bold text-ink-200 border border-ink-700">
+                      {metaForm.name[0] || "?"}
+                    </div>
+                  )}
+                  <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-white text-xs font-medium">点击更换</span>
                   </div>
                 </label>
-                {metaForm.avatar && (
-                  <input
-                    value={metaForm.avatar}
-                    onChange={(e) => setMetaForm({ ...metaForm, avatar: e.target.value })}
-                    placeholder="或粘贴 data:image URL"
-                    className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-xs text-ink-100 placeholder-ink-600 focus:outline-none focus:border-ancient-600"
-                  />
-                )}
+                <span className="text-xs text-ink-500">点击头像即可更换，自动生效</span>
               </div>
             </div>
             <div>
