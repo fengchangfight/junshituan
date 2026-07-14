@@ -61,6 +61,26 @@ async def _get_editable_persona(persona_id: str, user: User, db: AsyncSession) -
     return db_p
 
 
+async def _check_duplicate_public_name(name: str, exclude_id: str | None, db: AsyncSession) -> str | None:
+    """Check if a public persona with the same name already exists.
+
+    Returns error message string if duplicate found, None otherwise.
+    Private personas are exempt — only public ones must be unique.
+    """
+    from sqlalchemy import func
+    stmt = select(func.count()).select_from(PersonaDB).where(
+        func.lower(PersonaDB.name) == name.strip().lower(),
+        PersonaDB.visibility == "public",
+    )
+    if exclude_id:
+        stmt = stmt.where(PersonaDB.id != exclude_id)
+    result = await db.execute(stmt)
+    count = result.scalar_one()
+    if count > 0:
+        return f"公开军师「{name.strip()}」已存在，请勿重复创建"
+    return None
+
+
 @router.get("", response_model=list[AdvisorAdminOut])
 async def list_advisors(
     db: AsyncSession = Depends(get_db),
@@ -155,6 +175,14 @@ async def create_advisor(
     req.id = candidate_id
 
     is_admin = _is_admin(user)
+    visibility = "public" if is_admin else "private"
+
+    # Prevent duplicate public personas
+    if visibility == "public":
+        err = await _check_duplicate_public_name(req.name, None, db)
+        if err:
+            raise HTTPException(status_code=409, detail=err)
+
     db_p = PersonaDB(
         id=req.id,
         name=req.name,
@@ -176,7 +204,7 @@ async def create_advisor(
             "known": [], "unknown": [], "attitude_to_unknown": "",
         },
         is_published=False,
-        visibility="public" if is_admin else "private",
+        visibility=visibility,
         creator_id=None if is_admin else user.id,
     )
     db.add(db_p)
@@ -274,6 +302,13 @@ async def smart_create(
             cnt += 1
 
     is_admin = _is_admin(user)
+    visibility = "public" if is_admin else "private"
+
+    if visibility == "public":
+        err = await _check_duplicate_public_name(name, None, db)
+        if err:
+            raise HTTPException(status_code=409, detail=err)
+
     db_p = PersonaDB(
         id=persona_id,
         name=data.get("name", name),
@@ -290,7 +325,7 @@ async def smart_create(
         knowledge_domain=data.get("knowledge_domain", {}),
         skill_config=data.get("skill_config"),
         is_published=False,
-        visibility="public" if is_admin else "private",
+        visibility=visibility,
         creator_id=None if is_admin else user.id,
     )
     db.add(db_p)
@@ -797,6 +832,12 @@ async def set_visibility(
     db_p = result.scalar_one_or_none()
     if not db_p:
         raise HTTPException(status_code=404, detail="军师不存在")
+
+    # Prevent duplicate when promoting to public
+    if req.visibility == "public" and (db_p.visibility or "private") != "public":
+        err = await _check_duplicate_public_name(db_p.name, db_p.id, db)
+        if err:
+            raise HTTPException(status_code=409, detail=err)
 
     old_visibility = db_p.visibility or "public"
     db_p.visibility = req.visibility

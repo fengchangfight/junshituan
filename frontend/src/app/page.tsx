@@ -395,7 +395,7 @@ export default function HomePage() {
 
       {/* ── Create Advisor Modal ──────────────────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { if (!creating) setShowCreateModal(false); }}>
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -404,7 +404,7 @@ export default function HomePage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-ink-100">创建军师</h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-ink-500 hover:text-ink-300">
+              <button onClick={() => { if (!creating) setShowCreateModal(false); }} className="text-ink-500 hover:text-ink-300">
                 <X size={20} />
               </button>
             </div>
