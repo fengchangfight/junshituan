@@ -20,17 +20,10 @@ const AVATAR_COLORS = [
   "from-rose-600 to-rose-800",
 ];
 
-// System-generated prompts that should not appear in chat history
-const SYSTEM_PROMPTS = new Set([
-  "请根据之前的讨论继续发言。",
-]);
-
 function buildMessagesFromSession(session: SessionDetail): Message[] {
   const msgs: Message[] = [];
   if (session.messages) {
     for (const m of session.messages) {
-      // Skip system-generated prompts
-      if (m.role === "user" && SYSTEM_PROMPTS.has(m.content)) continue;
       msgs.push({
         id: m.id, role: m.role as "user" | "advisor" | "system",
         advisorId: m.advisor_id, advisorName: m.advisor_name,
@@ -326,97 +319,6 @@ function CouncilChat() {
       setSmartLoading(false);
     }
   }, [smartLoading, sessionId]);
-
-  /* ── trigger specific advisor ── */
-  const handlePickAdvisor = useCallback(async (advisor: Advisor) => {
-    if (loading || replyingId || !sessionId) return;
-    setLoading(true);
-    setReplyingId(advisor.id);
-
-    const pendingMsg: Message = {
-      id: `pending-${advisor.id}-${Math.random().toString(36).slice(2, 8)}`, role: "advisor",
-      advisorId: advisor.id, advisorName: advisor.name,
-      content: "（正在根据之前的讨论接话...）", timestamp: Date.now(), isStreaming: true,
-    };
-    setMessages((prev) => [...prev, pendingMsg]);
-
-    let timeout2: ReturnType<typeof setTimeout> | undefined;
-    try {
-      let gotContent = false;
-      const stream = askCouncil(sessionId, "请根据之前的讨论继续发言。", [advisor.id], useWebSearch);
-      timeout2 = setTimeout(() => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === pendingMsg.id && m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
-        );
-        setReplyingId(null);
-        setLoading(false);
-      }, 120000);
-      for await (const event of stream) {
-        if (event.metadata?.type === "budget" || event.metadata?.type === "budget_update") {
-          setBudget(event.metadata.budget);
-        }
-        if (event.metadata?.type === "tool_progress" && event.metadata?.tool_name === "web_search") {
-          const tp = event.metadata;
-          const actId = `${event.advisor_id}-${tp.query}`;
-          setToolActivities((prev) => {
-            if (tp.action === "tool_start") {
-              return [...prev.filter((a) => a.id !== actId), {
-                id: actId, advisorId: event.advisor_id, advisorName: event.advisor_name || "",
-                toolName: tp.tool_name, query: tp.query || "", status: "running" as const, ts: Date.now(),
-              }];
-            } else {
-              return prev.map((a) => a.id === actId ? { ...a, status: "done" as const, results: tp.results || [] } : a);
-            }
-          });
-          // Only update chat bubble on tool_start (avoid confusing "done/done again" flicker)
-          if (tp.action === "tool_start") {
-            const statusText = `📚 正在搜集汇总资料：${tp.query || "..."}`;
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id === pendingMsg.id) return { ...m, content: statusText };
-                if (m.advisorId === event.advisor_id && m.isStreaming) return { ...m, content: statusText };
-                return m;
-              })
-            );
-          }
-        } else if (event.content || event.done) {
-          clearTimeout(timeout2);
-          if (!gotContent && event.content) {
-            gotContent = true;
-            // Replace the placeholder text
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id === pendingMsg.id) return { ...m, content: event.content || "", isStreaming: !event.done };
-                return m;
-              })
-            );
-          } else {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.advisorId === event.advisor_id && m.isStreaming) {
-                  const isToolStatus = m.content.startsWith("📚");
-                  return {
-                    ...m,
-                    content: isToolStatus ? (event.content || "") : m.content + (event.content || ""),
-                    advisorName: event.advisor_name || m.advisorName,
-                    isStreaming: !event.done,
-                  };
-                }
-                return m;
-              })
-            );
-          }
-        }
-      }
-      clearTimeout(timeout2);
-    } catch {
-      setMessages((prev) => prev.map((m) => m.id === pendingMsg.id ? { ...m, content: "[回答失败]", isStreaming: false } : m));
-    } finally {
-      clearTimeout(timeout2);
-      setReplyingId(null);
-      setLoading(false);
-    }
-  }, [loading, replyingId, sessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -809,7 +711,7 @@ function CouncilChat() {
                           <div className="flex flex-wrap gap-1.5">
                             {advisors.map((a, i) => (
                               <button key={a.id}
-                                onClick={() => handlePickAdvisor(a)}
+                                onClick={() => { setInput(`@${a.name} 请接话`); inputRef.current?.focus(); }}
                                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border ${
                                   replyingId === a.id ? "opacity-50" : "bg-ink-800/80 border-ink-700 text-ink-300 hover:border-ancient-500/50 hover:text-ink-100"
                                 }`}>
