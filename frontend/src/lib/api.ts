@@ -253,3 +253,23 @@ export async function* askCouncil(
     }
   }
 }
+
+export async function generateSmartQuestion(sessionId: string): Promise<{
+  question: string;
+  target_advisor_id: string;
+  target_advisor_name: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/council/sessions/${sessionId}/smart-question`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "生成追问失败");
+  }
+  return res.json();
+}

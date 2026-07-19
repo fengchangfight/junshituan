@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Advisor, Message, SessionDetail, BudgetInfo } from "@/lib/types";
-import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession, getUserInfo } from "@/lib/api";
+import { fetchAdvisors, askCouncil, fetchSessionDetail, addAdvisorsToSession, getUserInfo, generateSmartQuestion } from "@/lib/api";
 import { Send, ArrowLeft, Users, UserPlus, PanelRightOpen, PanelRightClose, X, Loader2, Shuffle, Wrench, CheckCircle, Download } from "lucide-react";
 import html2canvas from "html2canvas";
 import ChatBubble from "@/components/ChatRoom/ChatBubble";
@@ -83,6 +83,12 @@ function CouncilChat() {
   const [toolActivities, setToolActivities] = useState<Array<{id: string; advisorId: string; advisorName: string; toolName: string; query: string; status: "running"|"done"; ts: number; results?: Array<{title: string; href: string; snippet: string}>}>>([]);
   const [useWebSearch, setUseWebSearch] = useState(true);
   const [userInfo, setUserInfo] = useState({ displayName: "", avatarUrl: "" });
+  const [smartLoading, setSmartLoading] = useState(false);
+  const [smartQuestion, setSmartQuestion] = useState<{
+    question: string;
+    target_advisor_id: string;
+    target_advisor_name: string;
+  } | null>(null);
 
   useEffect(() => {
     const info = getUserInfo();
@@ -178,6 +184,7 @@ function CouncilChat() {
     const question = input.trim();
     if (!question || loading || replyingId || !sessionId) return;
     setInput("");
+    setSmartQuestion(null);
 
     const mentioned = parseMentions(question, advisors);
     const targets = mentioned.length > 0 ? mentioned : (() => { const r = pickRandom(); return r ? [r] : []; })();
@@ -301,6 +308,21 @@ function CouncilChat() {
       setLoading(false);
     }
   }, [input, loading, replyingId, sessionId, advisors]);
+
+  /* ── smart follow-up question ── */
+  const handleSmartQuestion = useCallback(async () => {
+    if (smartLoading || !sessionId) return;
+    setSmartLoading(true);
+    setSmartQuestion(null);
+    try {
+      const result = await generateSmartQuestion(sessionId);
+      setSmartQuestion(result);
+    } catch {
+      // silently fail — user can still manually ask
+    } finally {
+      setSmartLoading(false);
+    }
+  }, [smartLoading, sessionId]);
 
   /* ── trigger specific advisor ── */
   const handlePickAdvisor = useCallback(async (advisor: Advisor) => {
@@ -714,6 +736,49 @@ function CouncilChat() {
                           onClick={(e) => e.stopPropagation()}>
                           <div className="text-[11px] text-ink-500 mb-2 flex items-center gap-1"><Shuffle size={12} /> 谁能接话？</div>
                           <div className="flex flex-wrap gap-1.5">
+                            {/* ── 智能追问按钮 / 结果 ── */}
+                            {smartQuestion ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    setInput(smartQuestion.question);
+                                    setSmartQuestion(null);
+                                    inputRef.current?.focus();
+                                  }}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border bg-purple-900/40 border-purple-600/50 text-purple-200 hover:bg-purple-800/60 hover:border-purple-500/70"
+                                  title={smartQuestion.question}
+                                >
+                                  <span className="text-[11px]">💡</span>
+                                  <span className="truncate max-w-[180px]">{smartQuestion.question}</span>
+                                  <span className="text-[10px] text-purple-400 shrink-0">发送 →</span>
+                                </button>
+                                <button
+                                  onClick={() => setSmartQuestion(null)}
+                                  className="w-5 h-5 rounded-full bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-500 hover:text-ink-300 shrink-0"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={handleSmartQuestion}
+                                disabled={smartLoading}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border ${
+                                  smartLoading
+                                    ? "bg-ink-800/50 border-ink-700/30 text-ink-500 cursor-wait"
+                                    : "bg-purple-900/20 border-purple-700/40 text-purple-300 hover:bg-purple-800/30 hover:border-purple-500/60"
+                                }`}
+                              >
+                                {smartLoading ? (
+                                  <Loader2 size={12} className="animate-spin shrink-0" />
+                                ) : (
+                                  <span className="text-[11px]">💡</span>
+                                )}
+                                {smartLoading ? "生成中..." : "智能追问"}
+                              </button>
+                            )}
+
+                            {/* ── 现有军师按钮 ── */}
                             {advisors.map((a, i) => (
                               <button key={a.id}
                                 onClick={() => handlePickAdvisor(a)}

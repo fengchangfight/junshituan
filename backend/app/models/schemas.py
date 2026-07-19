@@ -164,6 +164,19 @@ class AskEvent(BaseModel):
     metadata: dict = {}
 
 
+# ── Smart Question ─────────────────────────────────────────────────────────
+
+class SmartQuestionRequest(BaseModel):
+    """Request to generate a smart follow-up question. Context from DB."""
+    pass
+
+
+class SmartQuestionResponse(BaseModel):
+    question: str  # e.g. "@诸葛亮 您刚才提到隆中对，能否详细说说？"
+    target_advisor_id: str
+    target_advisor_name: str
+
+
 # ── Auth ───────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):

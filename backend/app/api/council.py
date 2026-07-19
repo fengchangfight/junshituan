@@ -5,10 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.db_models import User, PersonaDB
-from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest, RenameSessionRequest
+from app.models.schemas import CreateCouncilRequest, CouncilOut, AskRequest, SessionOut, SessionDetailOut, AddAdvisorsRequest, RenameSessionRequest, SmartQuestionRequest, SmartQuestionResponse
 from app.core.security import require_user, get_current_user
 from app.services.council_service import council_service
+from app.services.memory.session_store import session_store
 from app.services.persona_engine import get_persona_engine
+from app.core.llm_client import chat
 from sqlalchemy import select
 
 router = APIRouter(prefix="/api/council", tags=["council"])
@@ -91,6 +93,87 @@ async def add_advisors(
     if not ok:
         raise HTTPException(status_code=404, detail="会话不存在或无权操作")
     return {"status": "ok", "message": f"已邀请 {len(req.advisor_ids)} 位军师加入议事厅"}
+
+
+@router.post("/sessions/{session_id}/smart-question", response_model=SmartQuestionResponse)
+async def smart_question(
+    session_id: str,
+    req: SmartQuestionRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Generate a contextual follow-up question targeting a relevant advisor."""
+    session = await council_service.get_session(db, session_id, user.id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在或无权操作")
+
+    # Get recent messages. NOTE: get_messages with limit returns oldest N,
+    # so fetch all and slice from end to get the most recent ones.
+    all_msgs = await session_store.get_messages(db, session_id)
+    messages = all_msgs[-10:]  # last 10 messages
+
+    # Get advisor info for the session
+    advisors = get_persona_engine().get_many(session.advisor_ids or [])
+
+    if not messages:
+        raise HTTPException(status_code=400, detail="会话中暂无对话")
+
+    # Build context: format last N messages as conversation
+    context_lines = []
+    for m in messages:
+        if m.role == "user":
+            context_lines.append(f"[用户]: {m.content}")
+        elif m.role == "advisor":
+            name = m.advisor_name or "军师"
+            context_lines.append(f"[{name}]: {m.content}")
+        # skip system messages
+
+    conversation = "\n".join(context_lines)
+
+    # Build advisor list for the LLM
+    advisor_list = "\n".join(
+        f"- {a.id}: {a.name}（{a.title}）" for a in advisors
+    )
+
+    # LLM prompt
+    system_prompt = """你是一个对话助手，负责根据对话上下文生成一个简短的追问。
+
+要求：
+1. 追问要从提问者的角度出发，不是军师的角度
+2. 追问要简短（15-40字），自然口语化
+3. 追问要紧扣上下文，针对前一个回答者或上下文中最适合回答的军师
+4. 必须用 @军师名 开头来指定追问对象
+5. 输出纯JSON格式，不要markdown代码块"""
+
+    user_prompt = f"""## 对话中的军师列表
+{advisor_list}
+
+## 最近的对话内容
+{conversation}
+
+请根据以上对话上下文，生成一个简短的追问。返回纯JSON：
+{{"question": "@军师名 追问内容", "target_advisor_id": "实际的advisor_id", "target_advisor_name": "军师名"}}"""
+
+    import json as _json
+    try:
+        raw = await chat(system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.8)
+        # Strip markdown code fences if present
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip()
+        data = _json.loads(raw)
+        return SmartQuestionResponse(
+            question=data.get("question", ""),
+            target_advisor_id=data.get("target_advisor_id", ""),
+            target_advisor_name=data.get("target_advisor_name", ""),
+        )
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"生成追问失败：LLM返回格式异常")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成追问失败: {str(e)}")
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
