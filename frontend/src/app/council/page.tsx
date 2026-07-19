@@ -186,7 +186,6 @@ function CouncilChat() {
     setLoading(true);
     setReplyingId(targets[0].id);
 
-    const cleanQ = question.replace(/@\S+\s*/g, "").trim() || question;
     const userMsg: Message = {
       id: `user-${Date.now()}`, role: "user",
       content: question, timestamp: Date.now(),
@@ -195,7 +194,7 @@ function CouncilChat() {
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const stream = askCouncil(sessionId, cleanQ, targets.map((t) => t.id), useWebSearch);
+      const stream = askCouncil(sessionId, question, targets.map((t) => t.id), useWebSearch);
       timeout = setTimeout(() => {
         setMessages((prev) =>
           prev.map((m) => (m.isStreaming ? { ...m, content: "[回答超时，请重试]", isStreaming: false } : m))
