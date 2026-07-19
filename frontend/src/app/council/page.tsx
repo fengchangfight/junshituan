@@ -738,10 +738,11 @@ function CouncilChat() {
                         <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="ml-10 mt-2 mb-3"
                           onClick={(e) => e.stopPropagation()}>
                           <div className="text-[11px] text-ink-500 mb-2 flex items-center gap-1"><Shuffle size={12} /> 谁能接话？</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {/* ── 智能追问 ── */}
+
+                          {/* ── 智能追问区域（独立容器，与接话按钮区分）── */}
+                          <div className="mb-1.5 rounded-lg border border-purple-800/15 bg-purple-900/5 px-2 py-1.5">
                             {smartLoading ? (
-                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-ink-800/50 border border-ink-700/30 text-ink-500">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-ink-800/50 border border-ink-700/30 text-ink-500 w-fit">
                                 <Loader2 size={12} className="animate-spin shrink-0" />
                                 生成中...
                               </div>
@@ -776,11 +777,11 @@ function CouncilChat() {
                               </div>
                             ) : showSmartPicker ? (
                               <div className="flex flex-wrap items-center gap-1">
-                                <span className="text-[11px] text-ink-500 shrink-0">追问谁？</span>
+                                <span className="text-[11px] text-purple-300/80 shrink-0 font-medium">追问谁？</span>
                                 {advisors.map((a, i) => (
                                   <button key={a.id}
                                     onClick={() => handleSmartQuestion(a.id)}
-                                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all border bg-purple-900/20 border-purple-700/30 text-purple-300 hover:bg-purple-800/30 hover:border-purple-500/50`}
+                                    className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all border bg-purple-900/25 border-purple-700/30 text-purple-300 hover:bg-purple-800/40 hover:border-purple-500/50"
                                   >
                                     {a.avatar ? <img src={a.avatar} className="w-3.5 h-3.5 rounded-full object-cover" /> : <div className={`w-3.5 h-3.5 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-[7px] font-bold`}>{a.name[0]}</div>}
                                     {a.name}
@@ -802,8 +803,10 @@ function CouncilChat() {
                                 智能追问
                               </button>
                             )}
+                          </div>
 
-                            {/* ── 现有军师按钮 ── */}
+                          {/* ── 接话军师按钮 ── */}
+                          <div className="flex flex-wrap gap-1.5">
                             {advisors.map((a, i) => (
                               <button key={a.id}
                                 onClick={() => handlePickAdvisor(a)}
