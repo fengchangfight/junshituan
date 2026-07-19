@@ -168,7 +168,7 @@ class AskEvent(BaseModel):
 
 class SmartQuestionRequest(BaseModel):
     """Request to generate a smart follow-up question. Context from DB."""
-    pass
+    exclude_advisor_ids: list[str] = []  # advisors to avoid targeting (for diversity)
 
 
 class SmartQuestionResponse(BaseModel):

@@ -89,6 +89,7 @@ function CouncilChat() {
     target_advisor_id: string;
     target_advisor_name: string;
   } | null>(null);
+  const [smartExcludeIds, setSmartExcludeIds] = useState<string[]>([]);
 
   useEffect(() => {
     const info = getUserInfo();
@@ -185,6 +186,7 @@ function CouncilChat() {
     if (!question || loading || replyingId || !sessionId) return;
     setInput("");
     setSmartQuestion(null);
+    setSmartExcludeIds([]);
 
     const mentioned = parseMentions(question, advisors);
     const targets = mentioned.length > 0 ? mentioned : (() => { const r = pickRandom(); return r ? [r] : []; })();
@@ -315,14 +317,19 @@ function CouncilChat() {
     setSmartLoading(true);
     setSmartQuestion(null);
     try {
-      const result = await generateSmartQuestion(sessionId);
+      const result = await generateSmartQuestion(sessionId, smartExcludeIds);
       setSmartQuestion(result);
+      // Track this advisor to encourage diversity on next generation
+      setSmartExcludeIds(prev => {
+        if (prev.includes(result.target_advisor_id)) return prev;
+        return [...prev, result.target_advisor_id];
+      });
     } catch {
       // silently fail — user can still manually ask
     } finally {
       setSmartLoading(false);
     }
-  }, [smartLoading, sessionId]);
+  }, [smartLoading, sessionId, smartExcludeIds]);
 
   /* ── trigger specific advisor ── */
   const handlePickAdvisor = useCallback(async (advisor: Advisor) => {
@@ -743,17 +750,30 @@ function CouncilChat() {
                                   onClick={() => {
                                     setInput(smartQuestion.question);
                                     setSmartQuestion(null);
+                                    setSmartExcludeIds([]);
                                     inputRef.current?.focus();
                                   }}
                                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border bg-purple-900/40 border-purple-600/50 text-purple-200 hover:bg-purple-800/60 hover:border-purple-500/70"
                                   title={smartQuestion.question}
                                 >
                                   <span className="text-[11px]">💡</span>
-                                  <span className="truncate max-w-[180px]">{smartQuestion.question}</span>
+                                  <span className="truncate max-w-[160px]">{smartQuestion.question}</span>
                                   <span className="text-[10px] text-purple-400 shrink-0">发送 →</span>
                                 </button>
                                 <button
-                                  onClick={() => setSmartQuestion(null)}
+                                  onClick={handleSmartQuestion}
+                                  disabled={smartLoading}
+                                  title="换一位军师追问"
+                                  className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all border bg-ink-800/80 border-ink-700 text-ink-400 hover:text-ink-200 hover:border-ink-500 shrink-0"
+                                >
+                                  {smartLoading ? (
+                                    <Loader2 size={11} className="animate-spin" />
+                                  ) : (
+                                    <span className="text-[11px]">🔄</span>
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => { setSmartQuestion(null); setSmartExcludeIds([]); }}
                                   className="w-5 h-5 rounded-full bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-500 hover:text-ink-300 shrink-0"
                                 >
                                   <X size={10} />
@@ -774,7 +794,7 @@ function CouncilChat() {
                                 ) : (
                                   <span className="text-[11px]">💡</span>
                                 )}
-                                {smartLoading ? "生成中..." : "智能追问"}
+                                {smartLoading ? "生成中..." : smartExcludeIds.length > 0 ? "换人追问" : "智能追问"}
                               </button>
                             )}
 

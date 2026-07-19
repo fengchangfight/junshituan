@@ -135,15 +135,24 @@ async def smart_question(
         f"- {a.id}: {a.name}（{a.title}）" for a in advisors
     )
 
+    # Build exclude instruction if any advisors should be avoided
+    exclude_instruction = ""
+    if req.exclude_advisor_ids:
+        exclude_names = []
+        for eid in req.exclude_advisor_ids:
+            a = get_persona_engine().get(eid)
+            exclude_names.append(a.name if a else eid)
+        exclude_instruction = f"\n6. 不要追问以下军师（已经追问过了，换个人）：{', '.join(exclude_names)}"
+
     # LLM prompt
-    system_prompt = """你是一个对话助手，负责根据对话上下文生成一个简短的追问。
+    system_prompt = f"""你是一个对话助手，负责根据对话上下文生成一个简短的追问。
 
 要求：
 1. 追问要从提问者的角度出发，不是军师的角度
 2. 追问要简短（15-40字），自然口语化
 3. 追问要紧扣上下文，针对前一个回答者或上下文中最适合回答的军师
 4. 必须用 @军师名 开头来指定追问对象
-5. 输出纯JSON格式，不要markdown代码块"""
+5. 输出纯JSON格式，不要markdown代码块{exclude_instruction}"""
 
     user_prompt = f"""## 对话中的军师列表
 {advisor_list}
