@@ -256,7 +256,7 @@ export async function* askCouncil(
 
 export async function generateSmartQuestion(
   sessionId: string,
-  excludeAdvisorIds: string[] = [],
+  targetAdvisorId: string,
 ): Promise<{
   question: string;
   target_advisor_id: string;
@@ -268,7 +268,7 @@ export async function generateSmartQuestion(
       "Content-Type": "application/json",
       ...getAuthHeaders(),
     },
-    body: JSON.stringify({ exclude_advisor_ids: excludeAdvisorIds }),
+    body: JSON.stringify({ target_advisor_id: targetAdvisorId }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

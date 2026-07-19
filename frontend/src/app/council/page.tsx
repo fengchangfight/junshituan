@@ -89,7 +89,7 @@ function CouncilChat() {
     target_advisor_id: string;
     target_advisor_name: string;
   } | null>(null);
-  const [smartExcludeIds, setSmartExcludeIds] = useState<string[]>([]);
+  const [showSmartPicker, setShowSmartPicker] = useState(false);
 
   useEffect(() => {
     const info = getUserInfo();
@@ -186,7 +186,7 @@ function CouncilChat() {
     if (!question || loading || replyingId || !sessionId) return;
     setInput("");
     setSmartQuestion(null);
-    setSmartExcludeIds([]);
+    setShowSmartPicker(false);
 
     const mentioned = parseMentions(question, advisors);
     const targets = mentioned.length > 0 ? mentioned : (() => { const r = pickRandom(); return r ? [r] : []; })();
@@ -312,24 +312,20 @@ function CouncilChat() {
   }, [input, loading, replyingId, sessionId, advisors]);
 
   /* ── smart follow-up question ── */
-  const handleSmartQuestion = useCallback(async () => {
+  const handleSmartQuestion = useCallback(async (advisorId: string) => {
     if (smartLoading || !sessionId) return;
     setSmartLoading(true);
     setSmartQuestion(null);
+    setShowSmartPicker(false);
     try {
-      const result = await generateSmartQuestion(sessionId, smartExcludeIds);
+      const result = await generateSmartQuestion(sessionId, advisorId);
       setSmartQuestion(result);
-      // Track this advisor to encourage diversity on next generation
-      setSmartExcludeIds(prev => {
-        if (prev.includes(result.target_advisor_id)) return prev;
-        return [...prev, result.target_advisor_id];
-      });
     } catch {
-      // silently fail — user can still manually ask
+      // silently fail
     } finally {
       setSmartLoading(false);
     }
-  }, [smartLoading, sessionId, smartExcludeIds]);
+  }, [smartLoading, sessionId]);
 
   /* ── trigger specific advisor ── */
   const handlePickAdvisor = useCallback(async (advisor: Advisor) => {
@@ -743,14 +739,18 @@ function CouncilChat() {
                           onClick={(e) => e.stopPropagation()}>
                           <div className="text-[11px] text-ink-500 mb-2 flex items-center gap-1"><Shuffle size={12} /> 谁能接话？</div>
                           <div className="flex flex-wrap gap-1.5">
-                            {/* ── 智能追问按钮 / 结果 ── */}
-                            {smartQuestion ? (
+                            {/* ── 智能追问 ── */}
+                            {smartLoading ? (
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-ink-800/50 border border-ink-700/30 text-ink-500">
+                                <Loader2 size={12} className="animate-spin shrink-0" />
+                                生成中...
+                              </div>
+                            ) : smartQuestion ? (
                               <div className="flex items-center gap-1">
                                 <button
                                   onClick={() => {
                                     setInput(smartQuestion.question);
                                     setSmartQuestion(null);
-                                    setSmartExcludeIds([]);
                                     inputRef.current?.focus();
                                   }}
                                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border bg-purple-900/40 border-purple-600/50 text-purple-200 hover:bg-purple-800/60 hover:border-purple-500/70"
@@ -761,19 +761,33 @@ function CouncilChat() {
                                   <span className="text-[10px] text-purple-400 shrink-0">发送 →</span>
                                 </button>
                                 <button
-                                  onClick={handleSmartQuestion}
-                                  disabled={smartLoading}
+                                  onClick={() => setShowSmartPicker(true)}
                                   title="换一位军师追问"
                                   className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all border bg-ink-800/80 border-ink-700 text-ink-400 hover:text-ink-200 hover:border-ink-500 shrink-0"
                                 >
-                                  {smartLoading ? (
-                                    <Loader2 size={11} className="animate-spin" />
-                                  ) : (
-                                    <span className="text-[11px]">🔄</span>
-                                  )}
+                                  <span className="text-[11px]">🔄</span>
                                 </button>
                                 <button
-                                  onClick={() => { setSmartQuestion(null); setSmartExcludeIds([]); }}
+                                  onClick={() => setSmartQuestion(null)}
+                                  className="w-5 h-5 rounded-full bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-500 hover:text-ink-300 shrink-0"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ) : showSmartPicker ? (
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="text-[11px] text-ink-500 shrink-0">追问谁？</span>
+                                {advisors.map((a, i) => (
+                                  <button key={a.id}
+                                    onClick={() => handleSmartQuestion(a.id)}
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all border bg-purple-900/20 border-purple-700/30 text-purple-300 hover:bg-purple-800/30 hover:border-purple-500/50`}
+                                  >
+                                    {a.avatar ? <img src={a.avatar} className="w-3.5 h-3.5 rounded-full object-cover" /> : <div className={`w-3.5 h-3.5 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-[7px] font-bold`}>{a.name[0]}</div>}
+                                    {a.name}
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={() => setShowSmartPicker(false)}
                                   className="w-5 h-5 rounded-full bg-ink-800 border border-ink-700 flex items-center justify-center text-ink-500 hover:text-ink-300 shrink-0"
                                 >
                                   <X size={10} />
@@ -781,20 +795,11 @@ function CouncilChat() {
                               </div>
                             ) : (
                               <button
-                                onClick={handleSmartQuestion}
-                                disabled={smartLoading}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border ${
-                                  smartLoading
-                                    ? "bg-ink-800/50 border-ink-700/30 text-ink-500 cursor-wait"
-                                    : "bg-purple-900/20 border-purple-700/40 text-purple-300 hover:bg-purple-800/30 hover:border-purple-500/60"
-                                }`}
+                                onClick={() => setShowSmartPicker(true)}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border bg-purple-900/20 border-purple-700/40 text-purple-300 hover:bg-purple-800/30 hover:border-purple-500/60"
                               >
-                                {smartLoading ? (
-                                  <Loader2 size={12} className="animate-spin shrink-0" />
-                                ) : (
-                                  <span className="text-[11px]">💡</span>
-                                )}
-                                {smartLoading ? "生成中..." : smartExcludeIds.length > 0 ? "换人追问" : "智能追问"}
+                                <span className="text-[11px]">💡</span>
+                                智能追问
                               </button>
                             )}
 
